@@ -1,0 +1,12 @@
+[
+  {
+    "timeMs": 1000,
+    "translation": "Hello world, let's sing together",
+    "detectedLang": "en"
+  },
+  {
+    "timeMs": 4000,
+    "translation": "Nothing can stop us now",
+    "detectedLang": "en"
+  }
+]

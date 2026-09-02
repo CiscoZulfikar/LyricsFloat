@@ -1,0 +1,106 @@
+{
+  "name": "lyrics-float",
+  "version": "1.0.0",
+  "description": "Floating Spotify Miniplayer & Synced Karaoke Lyrics with Romaji & Translation for Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/transliteration.test.js && node test/translation.test.js && node test/lyrics-enricher.test.js && node test/integration.test.js && node test/multi-language.test.js",
+    "dist": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable",
+    "dist:all": "electron-builder --win"
+  },
+  "keywords": [
+    "spotify",
+    "lyrics",
+    "karaoke",
+    "romaji",
+    "translation",
+    "miniplayer",
+    "electron",
+    "windows"
+  ],
+  "author": "",
+  "license": "MIT",
+  "build": {
+    "appId": "com.lyricsfloat.app",
+    "productName": "LyricsFloat",
+    "copyright": "Copyright © 2026 LyricsFloat",
+    "compression": "maximum",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!cache/**",
+      "!test/**",
+      "!build/*.ps1",
+      "!**/*.map",
+      "!**/node_modules/kuromoji/test/**",
+      "!**/node_modules/**/test/**",
+      "!**/node_modules/**/tests/**",
+      "!**/node_modules/**/*.md",
+      "!**/node_modules/**/*.ts",
+      "!**/node_modules/pinyin/lib/esm/**",
+      "!**/node_modules/pinyin/lib/umd/**",
+      "!**/node_modules/pinyin/lib/types/**"
+    ],
+    "electronLanguages": [
+      "en-US",
+      "ja",
+      "ko",
+      "zh-CN"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "services/*.ps1",
+      "**/node_modules/kuromoji/dict/**"
+    ],
+
+
+
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LyricsFloat",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "runAfterFinish": true
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "kuroshiro": "^1.2.0",
+    "kuroshiro-analyzer-kuromoji": "^1.1.0",
+    "pinyin": "^4.0.0",
+    "wanakana": "^5.3.1"
+  }
+}
+
