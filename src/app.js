@@ -79,10 +79,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         translationPill.classList.remove('hidden');
       }
 
-      // Safety watchdog: auto-hide after 8 seconds if translation hangs
+      // Safety watchdog: emergency dead-man fallback in case of disconnected network (30s)
       watchdogTimeout = setTimeout(() => {
         setTranslationLoading(false, '', true);
-      }, 8000);
+      }, 30000);
     } else {
       btnTranslation.classList.remove('translating');
       btnTranslation.title = 'Translation (Meaning)';
@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         pillHideTimeout = setTimeout(() => {
           translationPill.classList.add('hidden');
           pillHideTimeout = null;
-        }, 800);
+        }, 1200);
       }
     }
   }
@@ -496,6 +496,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
+
+  // Collapsible Major Version Groups
+  document.querySelectorAll('.group-header[data-toggle="group"]').forEach(header => {
+    header.addEventListener('click', () => {
+      const content = header.nextElementSibling;
+      const arrow = header.querySelector('.group-arrow');
+      if (content) {
+        const isHidden = content.style.display === 'none';
+        content.style.display = isHidden ? 'flex' : 'none';
+        if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+      }
+    });
+  });
+
+  // Collapsible Minor Releases
+  document.querySelectorAll('.release-header[data-toggle="release"]').forEach(header => {
+    header.addEventListener('click', () => {
+      const content = header.nextElementSibling;
+      const arrow = header.querySelector('.release-arrow');
+      if (content) {
+        const isHidden = content.style.display === 'none';
+        content.style.display = isHidden ? 'flex' : 'none';
+        if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+      }
+    });
+  });
 
   // IPC Event Subscriptions
   if (window.lyricsFloatAPI) {

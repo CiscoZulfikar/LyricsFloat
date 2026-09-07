@@ -287,21 +287,28 @@ class TranslationService {
     const signal = this.activeAbortController.signal;
 
     try {
-      const BATCH_SIZE = 10;
-      const allResults = [];
+      // Deduplicate unique non-empty text lines to minimize network requests
+      const uniqueTexts = Array.from(new Set(
+        lines.map(l => normalizeHomoglyphs((l.text || l.original || '').trim())).filter(Boolean)
+      ));
 
-      for (let i = 0; i < lines.length; i += BATCH_SIZE) {
+      const textMap = new Map();
+      const BATCH_SIZE = 12;
+
+      for (let i = 0; i < uniqueTexts.length; i += BATCH_SIZE) {
         if (signal.aborted) break;
-        const batch = lines.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.all(batch.map(l => {
-          const rawText = l.text || l.original || '';
-          return this.translateSingleLine(rawText, targetLang, signal);
+        const batch = uniqueTexts.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(text => {
+          return this.translateSingleLine(text, targetLang, signal);
         }));
-        allResults.push(...batchResults);
+        batch.forEach((text, idx) => {
+          textMap.set(text, batchResults[idx]);
+        });
       }
 
-      const result = lines.map((line, index) => {
-        const item = allResults[index] || { translation: '', detectedLang: '', isPartiallyForeign: false };
+      const result = lines.map((line) => {
+        const rawText = normalizeHomoglyphs((line.text || line.original || '').trim());
+        const item = textMap.get(rawText) || { translation: '', detectedLang: '', isPartiallyForeign: false };
         return {
           timeMs: line.timeMs,
           translation: (item.translation || '').trim(),

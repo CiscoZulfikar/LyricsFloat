@@ -50,6 +50,29 @@ async function runTests() {
   assert.ok(/doryoku/i.test(kickBackTrans[0].romaji) && /mirai/i.test(kickBackTrans[0].romaji),
     `Kanji-only line in Japanese song must produce Japanese Romaji, got: ${kickBackTrans[0].romaji}`);
 
+  // Test colloquial suffix 〜面 (zura) in Japanese songs (e.g. Vaundy - odoriko)
+  const odorikoRomaji = await service.transliterateLine('回り出した あの子と僕が被害者面で', 'japanese');
+  console.log('[odoriko Romaji]:', odorikoRomaji);
+  assert.ok(/zura\s*de/i.test(odorikoRomaji),
+    `Colloquial suffix 被害者面で must produce 'zura de', got: ${odorikoRomaji}`);
+  assert.ok(!/men\s*de/i.test(odorikoRomaji),
+    `Colloquial suffix 被害者面で must NOT produce 'men de', got: ${odorikoRomaji}`);
+
+  // Test Japanese people counters (一人 = hitori, 二人 = futari) and でして (e.g. Vaundy - odoriko Verse 3)
+  const odorikoVerse3Romaji = await service.transliterateLine('(あぁ) 思いを蹴って 二人でしてんだ', 'japanese');
+  console.log('[odoriko Verse 3 Romaji]:', odorikoVerse3Romaji);
+  assert.ok(/futari/i.test(odorikoVerse3Romaji),
+    `二人 must produce 'futari', got: ${odorikoVerse3Romaji}`);
+  assert.ok(!/ni\s*nin/i.test(odorikoVerse3Romaji),
+    `二人 must NOT produce 'ni nin', got: ${odorikoVerse3Romaji}`);
+  assert.ok(!/deshi\s*te/i.test(odorikoVerse3Romaji),
+    `でして must NOT tokenize as 'deshi te', got: ${odorikoVerse3Romaji}`);
+
+  const hitoriRomaji = await service.transliterateLine('一人で歩く', 'japanese');
+  console.log('[hitori Romaji]:', hitoriRomaji);
+  assert.ok(/hitori/i.test(hitoriRomaji), `一人 must produce 'hitori', got: ${hitoriRomaji}`);
+  assert.ok(!/ichi\s*nin/i.test(hitoriRomaji), `一人 must NOT produce 'ichi nin', got: ${hitoriRomaji}`);
+
   console.log('TransliterationService tests passed!');
 }
 

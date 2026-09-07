@@ -111,6 +111,40 @@ function normalizeHomoglyphs(text) {
   });
 }
 
+// Nuance dictionary for colloquial suffixes and lyric idioms where standard
+// morphological dictionaries (Kuromoji/IPADIC) select generic On'yomi readings
+const JAPANESE_LYRIC_OVERRIDES = [
+  // Colloquial suffix 〜面 (zura: acting like / putting on the face of)
+  { pattern: /被害者面/g, replacement: '被害者づら' },
+  { pattern: /いい子面/g, replacement: 'いい子づら' },
+  { pattern: /知らん面/g, replacement: '知らんづら' },
+  { pattern: /澄まし(た?)面/g, replacement: '澄まし$1づら' },
+  { pattern: /すまし(た?)面/g, replacement: 'すまし$1づら' },
+  { pattern: /泣き面/g, replacement: '泣きづら' },
+  { pattern: /涼しい面/g, replacement: '涼しいづら' },
+  { pattern: /他人面/g, replacement: '他人づら' },
+  { pattern: /馬鹿面/g, replacement: '馬鹿づら' },
+  { pattern: /あほ面/g, replacement: 'あほづら' },
+  { pattern: /浮かない面/g, replacement: '浮かないづら' },
+
+  // People counters: 1 person (hitori) & 2 people (futari)
+  // Kuromoji notoriously tokenizes these as "ichi-nin" and "ni-nin"
+  { pattern: /(?<![一二三四五六七八九十])一人(?!前)/g, replacement: 'ひとり' },
+  { pattern: /(?<![一二三四五六七八九十])二人(?!三脚)/g, replacement: 'ふたり' },
+
+  // Grammatical boundary: particle で + verb して (avoids Kuromoji misparsing as 'でし' + 'て')
+  { pattern: /(?<=[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])でして(?=[んるたよねも欲しい]|$)/g, replacement: 'で して' }
+];
+
+function applyJapaneseLyricOverrides(text) {
+  if (!text || typeof text !== 'string') return text;
+  let processed = text;
+  for (const { pattern, replacement } of JAPANESE_LYRIC_OVERRIDES) {
+    processed = processed.replace(pattern, replacement);
+  }
+  return processed;
+}
+
 class TransliterationService {
   constructor() {
     const KuroshiroClass = Kuroshiro.default || Kuroshiro;
@@ -176,16 +210,17 @@ class TransliterationService {
     try {
       if (script === 'japanese') {
         await this.init();
+        const lyricText = applyJapaneseLyricOverrides(text);
         if (this.kuroshiro && this.kuroshiro._analyzer) {
-          const romaji = await this.kuroshiro.convert(text, {
+          const romaji = await this.kuroshiro.convert(lyricText, {
             to: 'romaji',
             mode: 'spaced',
             romajiSystem: 'hepburn'
           });
-          return romaji.trim();
+          return romaji.replace(/\s+/g, ' ').trim();
         } else {
           // Fallback to wanakana
-          return wanakana.toRomaji(text);
+          return wanakana.toRomaji(lyricText);
         }
       }
 

@@ -1041,8 +1041,22 @@ body, html {
 .group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 0 4px;
+  justify-content: space-between;
+  padding: 4px 6px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.group-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.group-arrow {
+  font-size: 8px;
+  color: var(--accent-primary, #c084fc);
+  transition: transform 0.2s ease;
 }
 
 .group-title {
@@ -1064,22 +1078,66 @@ body, html {
   letter-spacing: 0.3px;
 }
 
+.group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .release-card {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.release-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .release-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 2px 2px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.release-header:hover {
+  opacity: 0.9;
+}
+
+.release-arrow {
+  font-size: 8px;
+  color: var(--text-dim);
+  transition: transform 0.2s ease;
+}
+
+.release-badge {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 5px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 999px;
+  color: #38bdf8;
+  letter-spacing: 0.3px;
+}
+
+.release-content {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .release-tag {

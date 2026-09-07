@@ -1,6 +1,6 @@
 {
   "name": "lyrics-float",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Floating Spotify Miniplayer & Synced Karaoke Lyrics with Romaji & Translation for Windows",
   "main": "main.js",
   "scripts": {

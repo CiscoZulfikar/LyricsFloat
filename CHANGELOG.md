@@ -6,6 +6,18 @@ All notable changes to LyricsFloat will be documented in this file.
 
 ## Version 1.1
 
+### [1.1.3] - 2026-09-07 (`260907d`)
+
+#### ✨ What's New
+- **Collapsible In-App Changelog:** Both major version groups and individual minor releases in the in-app Settings modal can now be independently collapsed and expanded with interactive toggle arrows, keeping the settings panel sleek and compact.
+
+#### 🐛 What's Been Fixed
+- **Japanese Lyric Colloquial Suffix Pronunciation:** Added a targeted lyric nuance override system to `TransliterationService` for Japanese colloquial suffix `〜面` (e.g. `被害者面で` in *"odoriko"* by Vaundy correctly transliterated as *"higaisha zura de"* instead of generic dictionary On'yomi reading *"men de"*).
+- **Japanese Counter & Grammatical Tokenization:** Resolved notorious Kuromoji bugs where `二人` and `一人` were transliterated as *"ni nin"* and *"ichi nin"* instead of *"futari"* and *"hitori"*, and fixed particle `で` + verb `して` being mis-parsed as *"deshi te"* (e.g. `二人でしてんだ` now outputs clean *"futari de shi te n da"*).
+- **Translation Loading State & Line Deduplication:** Fixed the translation status pill prematurely vanishing after 8 seconds on longer tracks before translation arrived. Translation state is now purely event-driven by backend completion, and in-song line deduplication accelerates translation speeds by up to 60-70%.
+
+---
+
 ### [1.1.2] - 2026-09-07 (`260907c`)
 
 #### 🐛 What's Been Fixed

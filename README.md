@@ -45,9 +45,9 @@
 
 1. Go to the [**Releases Page**](https://github.com/CiscoZulfikar/LyricsFloat/releases).
 2. Download the latest installer:
-   - **`LyricsFloat Setup 1.1.2.exe`** (Standard Windows Installer Wizard)
-   - *or* **`LyricsFloat-1.1.2-Portable.exe`** (Standalone zero-install executable)
-3. Double-click **`LyricsFloat Setup 1.1.2.exe`** to launch the Setup Wizard.
+   - **`LyricsFloat Setup 1.1.3.exe`** (Standard Windows Installer Wizard)
+   - *or* **`LyricsFloat-1.1.3-Portable.exe`** (Standalone zero-install executable)
+3. Double-click **`LyricsFloat Setup 1.1.3.exe`** to launch the Setup Wizard.
 
 > [!NOTE]
 > **Windows SmartScreen Notice:**
