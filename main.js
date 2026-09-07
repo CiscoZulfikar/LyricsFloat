@@ -164,6 +164,7 @@ async function handleTrackChange(track) {
       (translationUpdate) => {
         if (currentTrackKey === translationUpdate.trackKey) {
           if (lastEnrichedLyrics) {
+            lastEnrichedLyrics.isTranslating = false;
             translationUpdate.lines.forEach((t, i) => {
               if (lastEnrichedLyrics.lines[i]) {
                 lastEnrichedLyrics.lines[i].translation = t.translation;

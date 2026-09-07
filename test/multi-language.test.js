@@ -105,6 +105,36 @@ async function runTest() {
     });
   });
 
+  // Test Japanese Katakana chanting / vocalization suppression (e.g. "ル・ル・ルルルルル・ルルル・ルルルルルル")
+  await new Promise((resolve) => {
+    const jpVocalicLyrics = {
+      synced: true,
+      lines: [
+        { timeMs: 0, text: 'ル・ル・ルルルルル・ルルル・ルルルルルル' }
+      ]
+    };
+    enricher.enrichLyrics('J-Chant', 'Artist J', jpVocalicLyrics, 'en', (update) => {
+      const trans = update.lines[0].translation;
+      console.log('[Japanese Chant]', jpVocalicLyrics.lines[0].text, '-> Translation:', JSON.stringify(trans));
+      assert.strictEqual(trans, '', 'Japanese chanting with Romaji should suppress translation');
+      console.log('Japanese vocalization suppression test passed!');
+      resolve();
+    });
+  });
+
+  // Test purely English song (Like You Do by Joji) -> isTranslating must be false
+  const jojiLyrics = {
+    synced: true,
+    lines: [
+      { timeMs: 14320, text: "Lately, I can't help but think" },
+      { timeMs: 19250, text: "That our roads might take us down different phases" },
+      { timeMs: 24930, text: "Don't wanna complicate the rhythm that we've got" }
+    ]
+  };
+  const jojiRes = await enricher.enrichLyrics('Like You Do', 'Joji', jojiLyrics, 'en');
+  console.log('[Like You Do] isTranslating:', jojiRes.isTranslating, '(expected false)');
+  assert.strictEqual(jojiRes.isTranslating, false, 'Purely English song with en target must set isTranslating to false');
+
   console.log('All multi-language tests passed successfully!');
 }
 

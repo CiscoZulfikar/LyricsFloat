@@ -1018,13 +1018,83 @@ body, html {
 .changelog-body {
   display: none;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px 10px;
+  gap: 12px;
+  padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   font-size: 11px;
   color: var(--text-dim);
-  max-height: 220px;
+  max-height: 260px;
   overflow-y: auto;
+}
+
+.changelog-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.changelog-group:not(:last-child) {
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+
+.group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent-primary, #c084fc);
+}
+
+.group-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 999px;
+  color: #38bdf8;
+  letter-spacing: 0.3px;
+}
+
+.release-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.release-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.release-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.release-date {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .changelog-sec {
@@ -1067,3 +1137,80 @@ body, html {
   color: var(--text-main);
   font-weight: 600;
 }
+
+/* ============================================================ */
+/* TRANSLATION LOADING INDICATOR & STATUS PILL                 */
+/* ============================================================ */
+
+.btn-tool.translating {
+  color: var(--accent-primary) !important;
+  animation: tool-pulse 1.4s ease-in-out infinite;
+  position: relative;
+}
+
+.btn-tool.translating svg {
+  animation: tool-spin 2s linear infinite;
+}
+
+@keyframes tool-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes tool-pulse {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 5px var(--accent-glow)); }
+  50% { opacity: 0.55; filter: drop-shadow(0 0 1px var(--accent-glow)); }
+}
+
+/* Floating Translation Loading Pill */
+.translation-status-pill {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 13px;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.90);
+  letter-spacing: 0.3px;
+  z-index: 60;
+  pointer-events: none;
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.translation-status-pill.hidden {
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  pointer-events: none;
+}
+
+.pill-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--accent-primary, #38bdf8);
+  border-radius: 50%;
+  animation: pill-spin 0.75s linear infinite;
+  display: inline-block;
+}
+
+.pill-ready-icon {
+  color: #4ade80;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+@keyframes pill-spin {
+  to { transform: rotate(360deg); }
+}
+

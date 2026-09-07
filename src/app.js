@@ -35,6 +35,71 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rangeSubSize = document.getElementById('range-sub-size');
   const subSizeVal = document.getElementById('sub-size-val');
 
+  const translationPill = document.getElementById('translation-status-pill');
+  const pillSpinner = document.getElementById('pill-spinner');
+  const pillIcon = document.getElementById('pill-icon');
+  const pillText = document.getElementById('pill-text');
+  let pillHideTimeout = null;
+  let watchdogTimeout = null;
+
+  function setTranslationLoading(isLoading, targetLang = '', immediate = false) {
+    if (!btnTranslation) return;
+    const isTranslationEnabled = !lyricsContainer.classList.contains('hide-translation');
+
+    if (pillHideTimeout) {
+      clearTimeout(pillHideTimeout);
+      pillHideTimeout = null;
+    }
+    if (watchdogTimeout) {
+      clearTimeout(watchdogTimeout);
+      watchdogTimeout = null;
+    }
+
+    if (immediate || !isTranslationEnabled) {
+      btnTranslation.classList.remove('translating');
+      btnTranslation.title = 'Translation (Meaning)';
+      if (translationPill) {
+        translationPill.classList.add('hidden');
+        if (pillSpinner) pillSpinner.style.display = 'none';
+        if (pillIcon) pillIcon.style.display = 'none';
+      }
+      return;
+    }
+
+    if (isLoading) {
+      btnTranslation.classList.add('translating');
+      btnTranslation.title = 'Translating lyrics...';
+
+      if (translationPill) {
+        if (pillSpinner) pillSpinner.style.display = 'inline-block';
+        if (pillIcon) pillIcon.style.display = 'none';
+        if (pillText) {
+          pillText.textContent = 'Translating lyrics...';
+        }
+        translationPill.classList.remove('hidden');
+      }
+
+      // Safety watchdog: auto-hide after 8 seconds if translation hangs
+      watchdogTimeout = setTimeout(() => {
+        setTranslationLoading(false, '', true);
+      }, 8000);
+    } else {
+      btnTranslation.classList.remove('translating');
+      btnTranslation.title = 'Translation (Meaning)';
+
+      if (translationPill && !translationPill.classList.contains('hidden')) {
+        if (pillSpinner) pillSpinner.style.display = 'none';
+        if (pillIcon) pillIcon.style.display = 'inline-block';
+        if (pillText) pillText.textContent = 'Translation ready';
+
+        pillHideTimeout = setTimeout(() => {
+          translationPill.classList.add('hidden');
+          pillHideTimeout = null;
+        }, 800);
+      }
+    }
+  }
+
   let currentDurationMs = 0;
 
   function formatTime(ms) {
@@ -255,6 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           setCoverArt(initialState.lyrics.coverUrl);
         }
         syncEngine.loadLyrics(initialState.lyrics);
+        setTranslationLoading(Boolean(initialState.lyrics.isTranslating), initialState.lyrics.targetLang);
       }
     }
   }
@@ -328,6 +394,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isHidden = lyricsContainer.classList.toggle('hide-translation');
     btnTranslation.classList.toggle('active', !isHidden);
     checkShowTranslation.checked = !isHidden;
+    if (isHidden && translationPill) {
+      translationPill.classList.add('hidden');
+      btnTranslation.classList.remove('translating');
+    }
     if (window.lyricsFloatAPI) window.lyricsFloatAPI.saveConfig('showTranslation', !isHidden);
   });
 
@@ -361,6 +431,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   selectTargetLang.addEventListener('change', (e) => {
     const targetLang = e.target.value;
+    setTranslationLoading(true, targetLang);
     if (window.lyricsFloatAPI) {
       window.lyricsFloatAPI.setTargetLanguage(targetLang);
     }
@@ -377,6 +448,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isVisible = e.target.checked;
     lyricsContainer.classList.toggle('hide-translation', !isVisible);
     btnTranslation.classList.toggle('active', isVisible);
+    if (!isVisible && translationPill) {
+      translationPill.classList.add('hidden');
+      btnTranslation.classList.remove('translating');
+    }
     if (window.lyricsFloatAPI) window.lyricsFloatAPI.saveConfig('showTranslation', isVisible);
   });
 
@@ -433,10 +508,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         setCoverArt(enrichedData.coverUrl);
       }
       syncEngine.loadLyrics(enrichedData);
+      if (enrichedData && enrichedData.isTranslating) {
+        setTranslationLoading(true, enrichedData.targetLang);
+      } else {
+        setTranslationLoading(false, '', true);
+      }
     });
 
     window.lyricsFloatAPI.onLyricsTranslationUpdated((translationUpdate) => {
       syncEngine.updateTranslations(translationUpdate);
+      const hasAny = Array.isArray(translationUpdate.lines) && translationUpdate.lines.some(l => l.translation && l.translation.trim().length > 0);
+      if (hasAny) {
+        setTranslationLoading(false);
+      } else {
+        setTranslationLoading(false, '', true);
+      }
     });
   }
 });

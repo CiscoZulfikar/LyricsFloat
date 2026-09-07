@@ -80,6 +80,13 @@
       </div>
     </main>
 
+    <!-- Floating Translation Loading Pill -->
+    <div id="translation-status-pill" class="translation-status-pill hidden">
+      <span class="pill-spinner" id="pill-spinner"></span>
+      <span id="pill-icon" class="pill-ready-icon" style="display: none;">✓</span>
+      <span id="pill-text" class="pill-text">Translating lyrics...</span>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal-backdrop hidden">
       <div class="modal-card">
@@ -196,7 +203,7 @@
               <div class="about-info">
                 <div class="about-header-row">
                   <span class="about-app-title">LyricsFloat</span>
-                  <span class="about-badge">v1.1 (260907)</span>
+                  <span class="about-badge">v1.1.1 (260907b)</span>
                 </div>
                 <span class="about-creator">Made by: <strong>ciszu</strong></span>
               </div>
@@ -205,34 +212,104 @@
             <!-- In-App Changelog -->
             <div class="changelog-card">
               <div class="changelog-header" id="changelog-toggle">
-                <span class="changelog-title">📋 Changelog (v1.1 - 260907)</span>
+                <span class="changelog-title">📋 Changelog</span>
                 <span class="changelog-arrow" id="changelog-arrow">▼</span>
               </div>
               <div class="changelog-body" id="changelog-body">
-                <div class="changelog-sec">
-                  <span class="changelog-tag tag-new">✨ What's New</span>
-                  <ul>
-                    <li><strong>Parenthetical Vocal Translation:</strong> Intelligently translates foreign main vocals while preserving backing vocals (e.g. <em>"Nadie como tú (We cried together...)"</em>).</li>
-                    <li><strong>English Language Toggle:</strong> Added English flag and checklist toggle to translate between English and other languages.</li>
-                    <li><strong>v2 Cache Engine:</strong> Upgraded translation cache system with auto-refresh for pristine lyrics.</li>
-                  </ul>
+
+                <!-- Version Group: 1.1 -->
+                <div class="changelog-group">
+                  <div class="group-header">
+                    <span class="group-title">Version 1.1</span>
+                    <span class="group-badge">Latest</span>
+                  </div>
+
+                  <!-- v1.1.1 -->
+                  <div class="release-card">
+                    <div class="release-header">
+                      <span class="release-tag">v1.1.1</span>
+                      <span class="release-date">260907b</span>
+                    </div>
+                    <div class="changelog-sec">
+                      <span class="changelog-tag tag-new">✨ What's New</span>
+                      <ul>
+                        <li><strong>Translation Loading Indicator:</strong> Real-time spinning/glowing icon and floating pill (<em>"Translating lyrics..."</em> → <em>"✓ Translation ready"</em>).</li>
+                      </ul>
+                    </div>
+                    <div class="changelog-sec">
+                      <span class="changelog-tag tag-mod">🛠️ What's Been Modified</span>
+                      <ul>
+                        <li><strong>Smart Vocalization Suppression:</strong> Repetitive singing syllables (e.g. <em>"ル・ル・ル..."</em>) with Romaji cleanly suppress redundant translation walls, and Western vocal repetitions are auto-collapsed.</li>
+                        <li><strong>Pure English Fast-Path:</strong> Robust vocabulary and foreign marker scanning eliminates false translation triggers on purely English tracks.</li>
+                      </ul>
+                    </div>
+                    <div class="changelog-sec">
+                      <span class="changelog-tag tag-fix">🐛 What's Been Fixed</span>
+                      <ul>
+                        <li><strong>English Song Translation & Pill Hang:</strong> Fixed purely English songs (e.g. <em>"Like You Do"</em>) getting falsely translated and leaving the loading pill spinning.</li>
+                        <li><strong>Vocalization Clutter Bug:</strong> Fixed katakana chanting generating 21 repeats of <em>"Lulu"</em> across 3 lines of italics right under Romaji.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <!-- v1.1.0 -->
+                  <div class="release-card">
+                    <div class="release-header">
+                      <span class="release-tag">v1.1.0</span>
+                      <span class="release-date">260907</span>
+                    </div>
+                    <div class="changelog-sec">
+                      <span class="changelog-tag tag-new">✨ What's New</span>
+                      <ul>
+                        <li><strong>Parenthetical Vocal Translation:</strong> Intelligently translates foreign main vocals while preserving backing vocals (e.g. <em>"Nadie como tú (We cried together...)"</em>).</li>
+                        <li><strong>English Language Toggle:</strong> Added English flag and checklist toggle to translate between English and other languages.</li>
+                        <li><strong>v2 Cache Engine:</strong> Upgraded translation cache system with auto-refresh for pristine lyrics.</li>
+                      </ul>
+                    </div>
+                    <div class="changelog-sec">
+                      <span class="changelog-tag tag-mod">🛠️ What's Been Modified</span>
+                      <ul>
+                        <li><strong>Concurrent Translation Pipeline:</strong> Optimized per-line translation (~150ms) with zero rate-limit risk.</li>
+                        <li><strong>Accurate Language Detection:</strong> Each line is classified independently, preventing language overlap in bilingual tracks.</li>
+                        <li><strong>Smart English Bypass:</strong> Fast-paths purely English songs to save network bandwidth while keeping bilingual songs active.</li>
+                        <li><strong>Homoglyph Normalization:</strong> Integrated <code>normalizeHomoglyphs</code> to clean confusable letters from scraped lyrics.</li>
+                      </ul>
+                    </div>
+                    <div class="changelog-sec">
+                      <span class="changelog-tag tag-fix">🐛 What's Been Fixed</span>
+                      <ul>
+                        <li><strong>Multi-Translation Bug:</strong> Fixed foreign verses in bilingual songs failing to translate.</li>
+                        <li><strong>Homoglyph Duplicate Leak:</strong> Sanitized Cyrillic lookalikes (e.g. <code>Therе's</code>) so English lines no longer show duplicate text.</li>
+                        <li><strong>Indonesian/Malay Mutual Detection:</strong> Resolved false translations for Indonesian songs with Indonesian target.</li>
+                        <li><strong>Checklist Language Suppression:</strong> Fixed hanging promises when disabling languages.</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-                <div class="changelog-sec">
-                  <span class="changelog-tag tag-mod">🛠️ What's Been Modified</span>
-                  <ul>
-                    <li><strong>Concurrent Translation Pipeline:</strong> Optimized per-line translation (~150ms) with zero rate-limit risk.</li>
-                    <li><strong>Accurate Language Detection:</strong> Each line is classified independently, preventing language overlap in bilingual tracks.</li>
-                    <li><strong>Smart English Bypass:</strong> Fast-paths purely English songs to save network bandwidth while keeping bilingual songs active.</li>
-                  </ul>
+
+                <!-- Version Group: 1.0 -->
+                <div class="changelog-group">
+                  <div class="group-header">
+                    <span class="group-title">Version 1.0</span>
+                  </div>
+                  <div class="release-card">
+                    <div class="release-header">
+                      <span class="release-tag">v1.0.0</span>
+                      <span class="release-date">260902</span>
+                    </div>
+                    <div class="changelog-sec">
+                      <span class="changelog-tag tag-new">✨ Initial Release</span>
+                      <ul>
+                        <li>Floating synced karaoke lyrics with Windows 11 frosted acrylic blur.</li>
+                        <li>Real-time Romaji, Pinyin, and Hangul pronunciation sub-text.</li>
+                        <li>Automatic neural translation into 14 target languages.</li>
+                        <li>Ambient album art fluid backlight glow.</li>
+                        <li>5 color themes, opacity slider, and custom font scaling.</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-                <div class="changelog-sec">
-                  <span class="changelog-tag tag-fix">🐛 What's Been Fixed</span>
-                  <ul>
-                    <li><strong>Multi-Translation Bug:</strong> Fixed foreign verses in bilingual songs failing to translate.</li>
-                    <li><strong>Homoglyph Duplicate Leak:</strong> Sanitized Cyrillic lookalikes (e.g. <code>Therе's</code>) so English lines no longer show duplicate text.</li>
-                    <li><strong>Indonesian/Malay Mutual Detection:</strong> Resolved false translations for Indonesian songs with Indonesian target.</li>
-                  </ul>
-                </div>
+
               </div>
             </div>
           </div>
