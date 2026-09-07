@@ -408,7 +408,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-
+  // In-App Changelog Toggle
+  const changelogToggle = document.getElementById('changelog-toggle');
+  const changelogBody = document.getElementById('changelog-body');
+  const changelogArrow = document.getElementById('changelog-arrow');
+  if (changelogToggle && changelogBody) {
+    changelogToggle.addEventListener('click', () => {
+      const isHidden = changelogBody.style.display === 'none' || !changelogBody.style.display;
+      changelogBody.style.display = isHidden ? 'flex' : 'none';
+      if (changelogArrow) {
+        changelogArrow.textContent = isHidden ? '▲' : '▼';
+      }
+    });
+  }
 
   // IPC Event Subscriptions
   if (window.lyricsFloatAPI) {

@@ -20,3 +20,6 @@ Thumbs.db
 # Internal documentation
 docs/
 
+# Test artifacts
+test/*-temp/
+

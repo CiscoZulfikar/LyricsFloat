@@ -11,7 +11,7 @@ class ConfigStore {
       showTranslation: true,
       translateForeignLatin: true,
       enabledTranslateLanguages: [
-        'ar', 'zh', 'fr', 'de', 'el', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'ru', 'es'
+        'ar', 'zh', 'en', 'fr', 'de', 'el', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'ru', 'es'
       ],
       targetLanguage: 'en',
       theme: 'theme-nordic-frost',
@@ -31,6 +31,9 @@ class ConfigStore {
         const raw = fs.readFileSync(this.filePath, 'utf8');
         const parsed = JSON.parse(raw);
         this.data = { ...this.data, ...parsed };
+        if (Array.isArray(this.data.enabledTranslateLanguages) && !this.data.enabledTranslateLanguages.includes('en')) {
+          this.data.enabledTranslateLanguages.push('en');
+        }
       }
     } catch (e) {
       console.error('Failed to load config:', e);

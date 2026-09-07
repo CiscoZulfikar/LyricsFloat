@@ -88,6 +88,29 @@ function romanizeByMap(text, map) {
 
 const path = require('path');
 
+function normalizeHomoglyphs(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/[\u0430\u0410\u0432\u0412\u0441\u0421\u0435\u0415\u0456\u0406\u0458\u0408\u043a\u041a\u043c\u041c\u043d\u041d\u043e\u041e\u0440\u0420\u0442\u0422\u0443\u0423\u0445\u0425]/g, (ch) => {
+    const map = {
+      '\u0430': 'a', '\u0410': 'A',
+      '\u0432': 'b', '\u0412': 'B',
+      '\u0441': 'c', '\u0421': 'C',
+      '\u0435': 'e', '\u0415': 'E',
+      '\u0456': 'i', '\u0406': 'I',
+      '\u0458': 'j', '\u0408': 'J',
+      '\u043a': 'k', '\u041a': 'K',
+      '\u043c': 'm', '\u041c': 'M',
+      '\u043d': 'h', '\u041d': 'H',
+      '\u043e': 'o', '\u041e': 'O',
+      '\u0440': 'p', '\u0420': 'P',
+      '\u0442': 't', '\u0422': 'T',
+      '\u0443': 'y', '\u0423': 'Y',
+      '\u0445': 'x', '\u0425': 'X'
+    };
+    return map[ch] || ch;
+  });
+}
+
 class TransliterationService {
   constructor() {
     const KuroshiroClass = Kuroshiro.default || Kuroshiro;
@@ -127,8 +150,11 @@ class TransliterationService {
       if (/[\u3000-\u303F]/.test(text)) return 'japanese';
       return 'chinese';
     }
+
+    // Clean confusable homoglyphs before checking Cyrillic
+    const cleaned = normalizeHomoglyphs(text);
     // Cyrillic (Russian, Ukrainian, Belarusian, Bulgarian, Serbian)
-    if (/[\u0400-\u04FF]/.test(text)) return 'cyrillic';
+    if (/[\u0400-\u04FF]/.test(cleaned)) return 'cyrillic';
     // Greek
     if (/[\u0370-\u03FF]/.test(text)) return 'greek';
     // Arabic / Persian / Urdu
@@ -233,4 +259,4 @@ class TransliterationService {
   }
 }
 
-module.exports = { TransliterationService, romanizeHangul, romanizeByMap, CYRILLIC_MAP, GREEK_MAP };
+module.exports = { TransliterationService, romanizeHangul, romanizeByMap, normalizeHomoglyphs, CYRILLIC_MAP, GREEK_MAP };

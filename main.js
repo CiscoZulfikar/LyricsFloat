@@ -153,7 +153,7 @@ async function handleTrackChange(track) {
     }
 
     const enabledLanguages = configStore.get('enabledTranslateLanguages', [
-      'ja', 'ko', 'zh', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'id', 'el', 'hi', 'ar'
+      'en', 'ja', 'ko', 'zh', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'id', 'el', 'hi', 'ar'
     ]);
 
     const enriched = await lyricsEnricher.enrichLyrics(
@@ -233,7 +233,7 @@ ipcMain.handle('set-target-language', async (_event, targetLang) => {
   if (currentRawLyrics && currentTrackKey && mainWindow) {
     const [title, artist] = currentTrackKey.split('___');
     const enabledLanguages = configStore.get('enabledTranslateLanguages', [
-      'ja', 'ko', 'zh', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'id', 'el', 'hi', 'ar'
+      'en', 'ja', 'ko', 'zh', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'id', 'el', 'hi', 'ar'
     ]);
 
     const enriched = await lyricsEnricher.enrichLyrics(

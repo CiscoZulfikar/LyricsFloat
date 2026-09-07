@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 async function runIntegration() {
-  const testCacheDir = path.join(__dirname, 'test-int-cache');
+  const testCacheDir = path.join(__dirname, 'test-int-cache-temp');
   if (fs.existsSync(testCacheDir)) fs.rmSync(testCacheDir, { recursive: true, force: true });
 
   const lyricsService = new LyricsService(testCacheDir);

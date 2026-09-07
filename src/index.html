@@ -177,6 +177,7 @@
               <label class="lang-chip"><input type="checkbox" name="trans-lang" value="fr" checked><img src="assets/flags/fr.svg" class="flag-icon" alt="France"><span>French</span></label>
               <label class="lang-chip"><input type="checkbox" name="trans-lang" value="de" checked><img src="assets/flags/de.svg" class="flag-icon" alt="Germany"><span>German</span></label>
               <label class="lang-chip"><input type="checkbox" name="trans-lang" value="el" checked><img src="assets/flags/el.svg" class="flag-icon" alt="Greece"><span>Greek</span></label>
+              <label class="lang-chip"><input type="checkbox" name="trans-lang" value="en" checked><img src="assets/flags/en.svg" class="flag-icon" alt="English"><span>English</span></label>
               <label class="lang-chip"><input type="checkbox" name="trans-lang" value="hi" checked><img src="assets/flags/hi.svg" class="flag-icon" alt="India"><span>Hindi</span></label>
               <label class="lang-chip"><input type="checkbox" name="trans-lang" value="id" checked><img src="assets/flags/id.svg" class="flag-icon" alt="Indonesia"><span>Indonesian</span></label>
               <label class="lang-chip"><input type="checkbox" name="trans-lang" value="it" checked><img src="assets/flags/it.svg" class="flag-icon" alt="Italy"><span>Italian</span></label>
@@ -195,9 +196,43 @@
               <div class="about-info">
                 <div class="about-header-row">
                   <span class="about-app-title">LyricsFloat</span>
-                  <span class="about-badge">v1.0.0</span>
+                  <span class="about-badge">v1.1 (260907)</span>
                 </div>
                 <span class="about-creator">Made by: <strong>ciszu</strong></span>
+              </div>
+            </div>
+
+            <!-- In-App Changelog -->
+            <div class="changelog-card">
+              <div class="changelog-header" id="changelog-toggle">
+                <span class="changelog-title">📋 Changelog (v1.1 - 260907)</span>
+                <span class="changelog-arrow" id="changelog-arrow">▼</span>
+              </div>
+              <div class="changelog-body" id="changelog-body">
+                <div class="changelog-sec">
+                  <span class="changelog-tag tag-new">✨ What's New</span>
+                  <ul>
+                    <li><strong>Parenthetical Vocal Translation:</strong> Intelligently translates foreign main vocals while preserving backing vocals (e.g. <em>"Nadie como tú (We cried together...)"</em>).</li>
+                    <li><strong>English Language Toggle:</strong> Added English flag and checklist toggle to translate between English and other languages.</li>
+                    <li><strong>v2 Cache Engine:</strong> Upgraded translation cache system with auto-refresh for pristine lyrics.</li>
+                  </ul>
+                </div>
+                <div class="changelog-sec">
+                  <span class="changelog-tag tag-mod">🛠️ What's Been Modified</span>
+                  <ul>
+                    <li><strong>Concurrent Translation Pipeline:</strong> Optimized per-line translation (~150ms) with zero rate-limit risk.</li>
+                    <li><strong>Accurate Language Detection:</strong> Each line is classified independently, preventing language overlap in bilingual tracks.</li>
+                    <li><strong>Smart English Bypass:</strong> Fast-paths purely English songs to save network bandwidth while keeping bilingual songs active.</li>
+                  </ul>
+                </div>
+                <div class="changelog-sec">
+                  <span class="changelog-tag tag-fix">🐛 What's Been Fixed</span>
+                  <ul>
+                    <li><strong>Multi-Translation Bug:</strong> Fixed foreign verses in bilingual songs failing to translate.</li>
+                    <li><strong>Homoglyph Duplicate Leak:</strong> Sanitized Cyrillic lookalikes (e.g. <code>Therе's</code>) so English lines no longer show duplicate text.</li>
+                    <li><strong>Indonesian/Malay Mutual Detection:</strong> Resolved false translations for Indonesian songs with Indonesian target.</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
