@@ -230,9 +230,15 @@ class TransliterationService {
     return '';
   }
 
-  async transliterateLyrics(lines) {
+  async transliterateLyrics(lines, forcedSongScript = null) {
     if (!Array.isArray(lines) || lines.length === 0) return [];
     
+    const songHasKana = lines.some(l => /[\u3040-\u309F\u30A0-\u30FF]/.test(l.text || l.original || ''));
+    const songHasHangul = lines.some(l => /[\uAC00-\uD7AF\u1100-\u11FF]/.test(l.text || l.original || ''));
+
+    const allText = lines.map(l => l.text || l.original || '').join(' ');
+    const overallScript = forcedSongScript || this.detectScript(allText);
+
     const hasAnyNonLatin = lines.some(l => this.detectScript(l.text || l.original || '') !== 'latin');
     if (!hasAnyNonLatin) {
       return lines.map(l => ({
@@ -245,7 +251,15 @@ class TransliterationService {
     const results = [];
     for (const line of lines) {
       const lineText = line.text || line.original || '';
-      const lineScript = this.detectScript(lineText);
+      let lineScript = this.detectScript(lineText);
+
+      // If line has CJK ideographs without kana, contextualize to song script
+      if (lineScript === 'chinese' && (songHasKana || overallScript === 'japanese')) {
+        lineScript = 'japanese';
+      } else if (lineScript === 'chinese' && (songHasHangul || overallScript === 'korean')) {
+        lineScript = 'korean';
+      }
+
       // Only transliterate if the line actually contains non-Latin script (Kanji, Kana, Hangul, Hanzi)
       const romaji = lineScript !== 'latin' ? await this.transliterateLine(lineText, lineScript) : '';
       results.push({
@@ -255,7 +269,6 @@ class TransliterationService {
       });
     }
     return results;
-
   }
 }
 

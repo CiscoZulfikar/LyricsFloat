@@ -6,6 +6,13 @@ All notable changes to LyricsFloat will be documented in this file.
 
 ## Version 1.1
 
+### [1.1.2] - 2026-09-07 (`260907c`)
+
+#### 🐛 What's Been Fixed
+- **Japanese Kanji Transliteration in Japanese Songs:** Fixed a bug where Kanji-only lines in Japanese tracks (e.g. *"努力 未来 a beautiful star"* in *"KICK BACK"* by Kenshi Yonezu) were classified as Chinese Hanzi due to isolated line evaluation and produced Pinyin (`nu3 li4 wei4 lai2...`). The transliteration engine now inspects the broader song context and Kana presence to reliably generate authentic Japanese Romaji (`doryoku mirai...`).
+
+---
+
 ### [1.1.1] - 2026-09-07 (`260907b`)
 
 #### ✨ What's New

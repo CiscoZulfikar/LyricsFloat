@@ -187,7 +187,7 @@ class LyricsEnricher {
     }
 
     // Step 1: Fast Transliteration (<15ms)
-    const transliteratedLines = await this.transliterationService.transliterateLyrics(rawLyrics.lines);
+    const transliteratedLines = await this.transliterationService.transliterateLyrics(rawLyrics.lines, detectedScript);
 
     const initialLines = transliteratedLines.map(l => ({
       timeMs: l.timeMs,

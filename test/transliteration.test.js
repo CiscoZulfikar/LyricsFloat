@@ -40,6 +40,16 @@ async function runTests() {
   assert.ok(enriched[0].romaji.length > 0);
   assert.strictEqual(enriched[1].original, 'Yeah yeah yeah');
 
+  // Test Japanese Kanji-only line in a Japanese song (e.g. Kenshi Yonezu - KICK BACK)
+  const kickBackLines = [
+    { timeMs: 1000, text: '努力 未来 a beautiful star' }, // Kanji only + English
+    { timeMs: 5000, text: 'ランドリー今日はガラ空きでラッキーデイ' } // Katakana & Hiragana
+  ];
+  const kickBackTrans = await service.transliterateLyrics(kickBackLines);
+  console.log('[KICK BACK Romaji]:', kickBackTrans[0].romaji);
+  assert.ok(/doryoku/i.test(kickBackTrans[0].romaji) && /mirai/i.test(kickBackTrans[0].romaji),
+    `Kanji-only line in Japanese song must produce Japanese Romaji, got: ${kickBackTrans[0].romaji}`);
+
   console.log('TransliterationService tests passed!');
 }
 
