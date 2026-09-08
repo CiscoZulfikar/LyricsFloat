@@ -6,7 +6,6 @@ class ConfigStore {
     this.filePath = filePath || path.join(process.cwd(), 'config.json');
     this.data = {
       alwaysOnTop: true,
-      windowOpacity: 0.80,
       showRomaji: true,
       showTranslation: true,
       translateForeignLatin: true,

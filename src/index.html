@@ -150,14 +150,6 @@
             </div>
             <input type="range" id="range-sub-size" min="9" max="20" value="11" style="width: 100%; cursor: pointer;">
           </div>
-          <div class="setting-item">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label for="range-opacity">Window Opacity</label>
-              <span id="opacity-val" style="font-size: 11px; color: var(--accent-primary);">80%</span>
-            </div>
-            <input type="range" id="range-opacity" min="80" max="100" value="80" style="width: 100%; cursor: pointer;">
-
-          </div>
           <div class="setting-item checkbox-row">
             <label for="check-album-tint">Album Art Ambient Background Tint</label>
             <input type="checkbox" id="check-album-tint" checked>
@@ -203,7 +195,7 @@
               <div class="about-info">
                 <div class="about-header-row">
                   <span class="about-app-title">LyricsFloat</span>
-                  <span class="about-badge">v1.1.3 (260907d)</span>
+                  <span class="about-badge">v1.1.4 (260908)</span>
                 </div>
                 <span class="about-creator">Made by: <strong>ciszu</strong></span>
               </div>
@@ -228,17 +220,50 @@
                   </div>
                   <div class="group-content">
 
-                    <!-- v1.1.3 -->
+                    <!-- v1.1.4 -->
                     <div class="release-card">
                       <div class="release-header" data-toggle="release">
                         <div style="display: flex; align-items: center; gap: 6px;">
                           <span class="release-arrow">▼</span>
-                          <span class="release-tag">v1.1.3</span>
+                          <span class="release-tag">v1.1.4</span>
                           <span class="release-badge">Latest</span>
+                        </div>
+                        <span class="release-date">260908</span>
+                      </div>
+                      <div class="release-content">
+                        <div class="changelog-sec">
+                          <span class="changelog-tag tag-new">✨ What's New</span>
+                          <ul>
+                            <li><strong>Refined Active Line Typography:</strong> Crisp 1:1 text rendering, dark contrast drop shadow, and subtle ambient glow without bulky card borders or continuous scaling jumps.</li>
+                            <li><strong>Natural End-of-Song Attribution:</strong> Viewport naturally accommodates both the active final lyric line and the provider credits footer without clipping at the window border.</li>
+                          </ul>
+                        </div>
+                        <div class="changelog-sec">
+                          <span class="changelog-tag tag-mod">🛠️ What's Been Modified</span>
+                          <ul>
+                            <li><strong>Streamlined Settings:</strong> Removed the experimental window opacity slider to ensure rock-solid native Windows 11 frosted acrylic blur and cleaner settings.</li>
+                          </ul>
+                        </div>
+                        <div class="changelog-sec">
+                          <span class="changelog-tag tag-fix">🐛 What's Been Fixed</span>
+                          <ul>
+                            <li><strong>Outro Audio Cut-Off:</strong> Fixed a bug where songs with instrumental solos or outros prematurely jumped to the credits before the audio finished playing.</li>
+                            <li><strong>Manual Scroll Persistence:</strong> Fixed auto-scroll timer snapping the window back away when manually scrolling to the bottom to inspect attribution links.</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- v1.1.3 -->
+                    <div class="release-card">
+                      <div class="release-header" data-toggle="release">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <span class="release-arrow">▶</span>
+                          <span class="release-tag">v1.1.3</span>
                         </div>
                         <span class="release-date">260907d</span>
                       </div>
-                      <div class="release-content">
+                      <div class="release-content" style="display: none;">
                         <div class="changelog-sec">
                           <span class="changelog-tag tag-new">✨ What's New</span>
                           <ul>

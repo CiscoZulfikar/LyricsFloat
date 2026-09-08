@@ -32,7 +32,6 @@
 - **🎧 Zero-Config Spotify Sync:** Hooks directly into Windows Global System Media Transport Controls (GSMTC). Detects play, pause, track changes, and scrubber seeks automatically.
 - **🎛️ Complete Customization (Settings ⚙️):**
   - **5 Color Themes:** Nordic Frost (Default), Neon Violet, Cyberpunk Cyan, Crimson Sunset, Emerald Glass.
-  - **Window Opacity:** Smooth slider from `80%` to `100%`.
   - **Custom Font Sizes:** Independent sliders for Original lyrics and Sub-Text.
   - **Languages Checklist:** Choose exactly which languages you want to translate with one-click toggles and colorful vector flag badges.
   - **Window Flexibility:** Freely resizable with support for ultra-compact floating mode (down to `280px × 320px`).
@@ -45,9 +44,9 @@
 
 1. Go to the [**Releases Page**](https://github.com/CiscoZulfikar/LyricsFloat/releases).
 2. Download the latest installer:
-   - **`LyricsFloat Setup 1.1.3.exe`** (Standard Windows Installer Wizard)
-   - *or* **`LyricsFloat-1.1.3-Portable.exe`** (Standalone zero-install executable)
-3. Double-click **`LyricsFloat Setup 1.1.3.exe`** to launch the Setup Wizard.
+   - **`LyricsFloat Setup 1.1.4.exe`** (Standard Windows Installer Wizard)
+   - *or* **`LyricsFloat-1.1.4-Portable.exe`** (Standalone zero-install executable)
+3. Double-click **`LyricsFloat Setup 1.1.4.exe`** to launch the Setup Wizard.
 
 > [!NOTE]
 > **Windows SmartScreen Notice:**

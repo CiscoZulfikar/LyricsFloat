@@ -5,6 +5,7 @@ class LyricsSyncEngine {
     this.lines = [];
     this.activeIndex = -1;
     this.lastPositionMs = 0;
+    this.durationMs = 0;
     this.lastStateTime = Date.now();
     this.isPlaying = false;
     this.animationFrameId = null;
@@ -17,8 +18,11 @@ class LyricsSyncEngine {
         this.isUserScrolling = true;
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
-          this.isUserScrolling = false;
-        }, 2200);
+          const atBottom = this.container.scrollHeight - this.container.scrollTop - this.container.clientHeight < 30;
+          if (!atBottom) {
+            this.isUserScrolling = false;
+          }
+        }, 2500);
       }, { passive: true });
     }
 
@@ -30,6 +34,7 @@ class LyricsSyncEngine {
     this.lines = (enrichedData && enrichedData.lines) || [];
     this.activeIndex = -1;
     this.targetScrollTop = 0;
+    this.isUserScrolling = false;
     if (this.container) this.container.scrollTop = 0;
 
 
@@ -138,6 +143,9 @@ class LyricsSyncEngine {
 
 
   updatePlaybackState(state) {
+    if (state && state.durationMs > 0) {
+      this.durationMs = state.durationMs;
+    }
     const now = Date.now();
     const newPos = state.positionMs || 0;
     const wasPlaying = this.isPlaying;
@@ -221,7 +229,7 @@ class LyricsSyncEngine {
 
     // Anti-flapping hysteresis:
     // If targetIndex is behind activeIndex, only regress if currentMs is well before the current line's timestamp
-    if (this.activeIndex >= 0 && targetIndex < this.activeIndex) {
+    if (this.activeIndex >= 0 && this.activeIndex < this.lines.length && targetIndex < this.activeIndex) {
       const activeLineTime = this.lines[this.activeIndex].timeMs;
       if (currentMs >= activeLineTime - 1200) {
         // Retain current line, do not flap backwards
@@ -230,6 +238,7 @@ class LyricsSyncEngine {
     }
 
     if (targetIndex !== this.activeIndex) {
+      this.isUserScrolling = false;
       this.setActiveIndex(targetIndex);
     }
   }
@@ -258,6 +267,19 @@ class LyricsSyncEngine {
     const containerHeight = this.container.clientHeight;
     const elemTop = elem.offsetTop;
     const elemHeight = elem.clientHeight;
+
+    // If this is the final lyric line, ensure both the last line and the provider credits below it are comfortably visible
+    const isLastLine = elem.dataset && parseInt(elem.dataset.index, 10) === (this.lines.length - 1);
+    if (isLastLine) {
+      const footer = this.container.querySelector('.lyrics-provider-footer');
+      if (footer) {
+        const footerBottom = footer.offsetTop + footer.clientHeight;
+        this.targetScrollTop = Math.max(0, footerBottom - containerHeight + 20);
+        if (immediate) this.container.scrollTop = this.targetScrollTop;
+        return;
+      }
+    }
+
     this.targetScrollTop = Math.max(0, elemTop - (containerHeight * 0.42) + (elemHeight / 2));
 
     if (immediate) {

@@ -6,6 +6,21 @@ All notable changes to LyricsFloat will be documented in this file.
 
 ## Version 1.1
 
+### [1.1.4] - 2026-09-08 (`260908`)
+
+#### ✨ What's New & Polished
+- **Refined Active Line Typography & Subtle Focus:** Upgraded active karaoke line styling with crisp 1:1 text rendering, a dark contrast drop shadow, and a subtle ambient accent glow (`--accent-glow`). Inactive lines smoothly settle at `scale(0.98)` with reduced padding (`8px 12px`) for a cleaner, modern reading experience without jarring scale jumps or blurred neon clouds.
+- **Natural End-of-Song Attribution Layout:** When the song reaches the final lyric line, the viewport automatically positions both the active final line and the provider credits footer (`Provided by: LRCLIB [track URL]`) comfortably in view with zero clipping at the window border.
+
+#### 🛠️ What's Been Modified
+- **Streamlined Settings (Window Opacity Removed):** Removed the experimental window opacity slider to ensure rock-solid native Windows 11 frosted acrylic background rendering (fixed at 90% blur) and cleaner settings.
+
+#### 🐛 What's Been Fixed
+- **End-of-Song Auto-Scroll Jump:** Fixed a bug where songs with instrumental solos or long outros (e.g. *Sunflower*, *Loverboy*, *odoriko*) prematurely jumped to the credits before the audio finished playing. The final line now remains in view throughout the entire outro without any interruptions.
+- **Manual Scroll Persistence:** Fixed auto-scroll timer snapping the window back away when manually scrolling to the bottom to view or click track attribution links.
+
+---
+
 ### [1.1.3] - 2026-09-07 (`260907d`)
 
 #### ✨ What's New

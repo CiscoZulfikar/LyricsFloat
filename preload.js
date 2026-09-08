@@ -19,7 +19,6 @@ contextBridge.exposeInMainWorld('lyricsFloatAPI', {
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   setAlwaysOnTop: (flag) => ipcRenderer.invoke('set-always-on-top', flag),
-  setOpacity: (val) => ipcRenderer.invoke('set-opacity', val),
   openExternal: (url) => ipcRenderer.invoke('open-external', url)
 });
 

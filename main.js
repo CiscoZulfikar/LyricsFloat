@@ -53,7 +53,6 @@ function applyNativeBlur(window, opacityPercent = 90) {
 function createWindow() {
   const bounds = configStore.get('bounds', { width: 440, height: 620 });
   const alwaysOnTop = configStore.get('alwaysOnTop', true);
-  const opacity = configStore.get('windowOpacity', 0.80);
 
   mainWindow = new BrowserWindow({
     width: bounds.width || 440,
@@ -86,11 +85,11 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
   mainWindow.once('ready-to-show', () => {
-    applyNativeBlur(mainWindow, Number(opacity) * 100);
+    applyNativeBlur(mainWindow, 90);
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
-    applyNativeBlur(mainWindow, Number(configStore.get('windowOpacity', 0.95)) * 100);
+    applyNativeBlur(mainWindow, 90);
     if (lastPlaybackState && mainWindow) {
       mainWindow.webContents.send('playback-state', lastPlaybackState);
     }
@@ -104,7 +103,7 @@ function createWindow() {
     if (!mainWindow) return;
     const currentBounds = mainWindow.getBounds();
     configStore.set('bounds', currentBounds);
-    applyNativeBlur(mainWindow, Number(configStore.get('windowOpacity', 0.95)) * 100);
+    applyNativeBlur(mainWindow, 90);
   });
 
 
@@ -292,14 +291,6 @@ ipcMain.handle('set-always-on-top', (_event, flag) => {
   if (mainWindow) {
     mainWindow.setAlwaysOnTop(flag);
     configStore.set('alwaysOnTop', flag);
-  }
-});
-
-ipcMain.handle('set-opacity', (_event, val) => {
-  if (mainWindow) {
-    const num = Math.min(1.0, Math.max(0.80, parseFloat(val) || 0.95));
-    configStore.set('windowOpacity', num);
-    applyNativeBlur(mainWindow, num * 100);
   }
 });
 

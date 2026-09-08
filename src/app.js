@@ -26,10 +26,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const langCheckboxes = document.querySelectorAll('input[name="trans-lang"]');
   const btnLangAll = document.getElementById('btn-lang-all');
   const btnLangNone = document.getElementById('btn-lang-none');
-  const rangeOpacity = document.getElementById('range-opacity');
-
-
-  const opacityVal = document.getElementById('opacity-val');
   const rangeOrigSize = document.getElementById('range-orig-size');
   const origSizeVal = document.getElementById('orig-size-val');
   const rangeSubSize = document.getElementById('range-sub-size');
@@ -151,17 +147,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (rangeSubSize) rangeSubSize.value = size;
     if (subSizeVal) subSizeVal.textContent = `${size}px`;
   }
-
-  function setWindowOpacity(opacityFloat) {
-    const clamped = Math.min(1.0, Math.max(0.80, Number(opacityFloat) || 0.95));
-    document.documentElement.style.setProperty('--bg-alpha', clamped);
-    if (rangeOpacity) {
-      const pct = Math.round(clamped * 100);
-      rangeOpacity.value = pct;
-      if (opacityVal) opacityVal.textContent = `${pct}%`;
-    }
-  }
-
 
   function setCoverArt(url) {
     if (url) {
@@ -304,9 +289,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           selectTargetLang.value = config.targetLanguage;
         }
 
-        if (config.windowOpacity !== undefined) {
-          setWindowOpacity(config.windowOpacity);
-        }
         if (config.alwaysOnTop === false) {
           btnPin.classList.remove('active');
         }
@@ -353,18 +335,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       setSubtextFontSize(val);
       if (window.lyricsFloatAPI) {
         window.lyricsFloatAPI.saveConfig('subtextFontSize', val);
-      }
-    });
-  }
-
-  // Opacity Slider Handler
-  if (rangeOpacity) {
-    rangeOpacity.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value, 10);
-      const opacityFloat = val / 100;
-      setWindowOpacity(opacityFloat);
-      if (window.lyricsFloatAPI) {
-        window.lyricsFloatAPI.saveConfig('windowOpacity', opacityFloat);
       }
     });
   }
