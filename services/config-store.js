@@ -17,6 +17,7 @@ class ConfigStore {
       originalFontSize: 18,
       subtextFontSize: 11,
       albumArtTint: true,
+      lyricsAlignment: 'center',
       bounds: { x: null, y: null, width: 440, height: 620 }
     };
 

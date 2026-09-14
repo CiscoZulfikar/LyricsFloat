@@ -14,6 +14,21 @@ function isTrackMatch(resultTitle, targetTitle) {
 }
 
 
+function getTargetCountries(title, artist, album = '') {
+  const combined = `${title} ${artist} ${album}`;
+  if (/[\u3040-\u30ff]/.test(combined)) {
+    return ['JP', 'US'];
+  }
+  if (/[\uac00-\ud7af]/.test(combined)) {
+    return ['KR', 'US'];
+  }
+  if (/[\u4e00-\u9fff]/.test(combined)) {
+    return ['JP', 'TW', 'HK', 'US'];
+  }
+  return ['US', 'GB', 'JP'];
+}
+
+
 class CoverService {
   constructor(cacheDir = null) {
     this.cacheDir = cacheDir || path.join(process.cwd(), 'cache', 'covers');
@@ -25,12 +40,25 @@ class CoverService {
     return crypto.createHash('md5').update(raw).digest('hex');
   }
 
-  async fetchCoverUrl(title, artist, album = '') {
+  async fetchTrackMetadata(title, artist, album = '') {
     if (!title || !artist) return null;
     const cacheKey = this.getCacheKey(title, artist, album);
 
     if (this.memoryCache.has(cacheKey)) {
-      return this.memoryCache.get(cacheKey);
+      const cached = this.memoryCache.get(cacheKey);
+      if (typeof cached === 'string') {
+        return { coverUrl: cached, isExplicit: false };
+      }
+      return cached;
+    }
+
+    const meta = {
+      coverUrl: null,
+      isExplicit: false
+    };
+
+    if (/\b(explicit)\b/i.test(`${title} ${album}`)) {
+      meta.isExplicit = true;
     }
 
     try {
@@ -38,78 +66,108 @@ class CoverService {
       if (album) {
         try {
           const q = encodeURIComponent(`${title} ${artist} ${album}`);
-          const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=5`);
+          const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=5`, { signal: AbortSignal.timeout(3500) });
           if (res.ok) {
             const d = await res.json();
             if (d.data && d.data.length > 0) {
               const match = d.data.find(item => isTrackMatch(item.title, title) && item.album && norm(item.album.title).includes(norm(album)));
-              if (match && match.album && match.album.cover_big) {
-                const cover = match.album.cover_xl || match.album.cover_big;
-                this.memoryCache.set(cacheKey, cover);
-                return cover;
+              if (match) {
+                if (match.explicit_lyrics || match.explicit_content_lyrics === 1) {
+                  meta.isExplicit = true;
+                }
+                if (match.album && match.album.cover_big) {
+                  meta.coverUrl = match.album.cover_xl || match.album.cover_big;
+                  this.memoryCache.set(cacheKey, meta);
+                  return meta;
+                }
               }
             }
           }
         } catch (e) {}
       }
 
-      // 2. Try iTunes with title + artist + album (Strict Track Match)
-      if (album) {
-        try {
-          const q = encodeURIComponent(`${title} ${artist} ${album}`);
-          const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=5`);
-          if (res.ok) {
-            const d = await res.json();
-            if (d.results && d.results.length > 0) {
-              const match = d.results.find(item => isTrackMatch(item.trackName, title) && norm(item.collectionName).includes(norm(album)));
-              if (match && match.artworkUrl100) {
-                const highRes = match.artworkUrl100.replace('100x100bb', '512x512bb');
-                this.memoryCache.set(cacheKey, highRes);
-                return highRes;
-              }
-            }
-          }
-        } catch (e) {}
-      }
-
-      // 3. Fallback: Deezer with title + artist (Validating track name match)
+      // 2. Fallback: Deezer with title + artist
       try {
         const q = encodeURIComponent(`${title} ${artist}`);
-        const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=5`);
+        const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=5`, { signal: AbortSignal.timeout(3500) });
         if (res.ok) {
           const d = await res.json();
           if (d.data && d.data.length > 0) {
             const match = d.data.find(item => isTrackMatch(item.title, title));
-            if (match && match.album && match.album.cover_big) {
-              const cover = match.album.cover_xl || match.album.cover_big;
-              this.memoryCache.set(cacheKey, cover);
-              return cover;
+            if (match) {
+              if (match.explicit_lyrics || match.explicit_content_lyrics === 1) {
+                meta.isExplicit = true;
+              }
+              if (match.album && match.album.cover_big) {
+                meta.coverUrl = match.album.cover_xl || match.album.cover_big;
+                this.memoryCache.set(cacheKey, meta);
+                return meta;
+              }
             }
           }
         }
       } catch (e) {}
 
-      // 4. Fallback: iTunes with title + artist (Validating track name match)
-      try {
-        const q = encodeURIComponent(`${title} ${artist}`);
-        const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=5`);
-        if (res.ok) {
-          const d = await res.json();
-          if (d.results && d.results.length > 0) {
-            const match = d.results.find(item => isTrackMatch(item.trackName, title));
-            if (match && match.artworkUrl100) {
-              const highRes = match.artworkUrl100.replace('100x100bb', '512x512bb');
-              this.memoryCache.set(cacheKey, highRes);
-              return highRes;
+      // 3. Try iTunes with regional storefronts (Prioritizing regional country based on language script)
+      const countries = getTargetCountries(title, artist, album);
+      for (const country of countries) {
+        // 3a. iTunes with title + artist + album
+        if (album) {
+          try {
+            const q = encodeURIComponent(`${title} ${artist} ${album}`);
+            const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=5`, { signal: AbortSignal.timeout(3500) });
+            if (res.ok) {
+              const d = await res.json();
+              if (d.results && d.results.length > 0) {
+                const match = d.results.find(item => isTrackMatch(item.trackName, title) && norm(item.collectionName).includes(norm(album)));
+                if (match) {
+                  if (match.trackExplicitness === 'explicit' || match.collectionExplicitness === 'explicit') {
+                    meta.isExplicit = true;
+                  }
+                  if (match.artworkUrl100) {
+                    meta.coverUrl = match.artworkUrl100.replace('100x100bb', '512x512bb');
+                    this.memoryCache.set(cacheKey, meta);
+                    return meta;
+                  }
+                }
+              }
+            }
+          } catch (e) {}
+        }
+
+        // 3b. iTunes with title + artist
+        try {
+          const q = encodeURIComponent(`${title} ${artist}`);
+          const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=5`, { signal: AbortSignal.timeout(3500) });
+          if (res.ok) {
+            const d = await res.json();
+            if (d.results && d.results.length > 0) {
+              const match = d.results.find(item => isTrackMatch(item.trackName, title));
+              if (match) {
+                if (match.trackExplicitness === 'explicit' || match.collectionExplicitness === 'explicit') {
+                  meta.isExplicit = true;
+                }
+                if (match.artworkUrl100) {
+                  meta.coverUrl = match.artworkUrl100.replace('100x100bb', '512x512bb');
+                  this.memoryCache.set(cacheKey, meta);
+                  return meta;
+                }
+              }
             }
           }
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
     } catch (e) {
-      console.warn('Cover fetch error:', e.message);
+      console.warn('Metadata fetch error:', e.message);
     }
 
-    return null;
+    this.memoryCache.set(cacheKey, meta);
+    return meta;
+  }
+
+  async fetchCoverUrl(title, artist, album = '') {
+    const meta = await this.fetchTrackMetadata(title, artist, album);
+    return meta ? meta.coverUrl : null;
   }
 }
 

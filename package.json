@@ -1,11 +1,11 @@
 {
   "name": "lyrics-float",
-  "version": "1.1.4",
+  "version": "1.2.0",
   "description": "Floating Spotify Miniplayer & Synced Karaoke Lyrics with Romaji & Translation for Windows",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node test/transliteration.test.js && node test/translation.test.js && node test/lyrics-enricher.test.js && node test/integration.test.js && node test/multi-language.test.js",
+    "test": "node test/transliteration.test.js && node test/translation.test.js && node test/lyrics-enricher.test.js && node test/integration.test.js && node test/multi-language.test.js && node test/lyrics-sync.test.js && node test/cover-service.test.js",
     "dist": "electron-builder --win nsis",
     "dist:portable": "electron-builder --win portable",
     "dist:all": "electron-builder --win"

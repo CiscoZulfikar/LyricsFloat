@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('lyricsFloatAPI', {
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   setAlwaysOnTop: (flag) => ipcRenderer.invoke('set-always-on-top', flag),
+  seekPlayback: (positionMs) => ipcRenderer.invoke('seek-playback', positionMs),
+  controlPlayback: (action) => ipcRenderer.invoke('control-playback', action),
   openExternal: (url) => ipcRenderer.invoke('open-external', url)
 });
 

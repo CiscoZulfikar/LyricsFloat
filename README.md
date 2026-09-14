@@ -29,12 +29,14 @@
   - Songs already in your target language (e.g. English songs with English target) will never display redundant duplicate text underneath.
   - Multilingual and bilingual songs only display translations for foreign lines.
 - **⏱️ Fluid Physics-Based Momentum Scrolling:** High-refresh-rate camera interpolator that glides seamlessly with the song's timing.
-- **🎧 Zero-Config Spotify Sync:** Hooks directly into Windows Global System Media Transport Controls (GSMTC). Detects play, pause, track changes, and scrubber seeks automatically.
-- **🎛️ Complete Customization (Settings ⚙️):**
+- **🎧 Zero-Config Spotify Sync & Native Media Controls:** Hooks directly into Windows Global System Media Transport Controls (GSMTC). Detects play, pause, track changes, and scrubber seeks automatically with hover-expanding controls and interactive timeline scrubbing.
+- **📍 Floating "Jump to Singing Line" Chip:** Dynamic single-line quick-return chip that appears when manually scrolling through lyrics and snaps the view back to the active singing line on click.
+- **🎛️ Tabbed Customization & Preferences (Settings ⚙️):**
+  - **4 Organized Tabs:** *Theme*, *Lyrics*, *Translation*, and *About* in a centered modal view.
   - **5 Color Themes:** Nordic Frost (Default), Neon Violet, Cyberpunk Cyan, Crimson Sunset, Emerald Glass.
-  - **Custom Font Sizes:** Independent sliders for Original lyrics and Sub-Text.
+  - **Custom Font Sizes & Alignment:** Sliders for Original lyrics and Sub-Text, plus Left, Center, and Right text alignment.
   - **Languages Checklist:** Choose exactly which languages you want to translate with one-click toggles and colorful vector flag badges.
-  - **Window Flexibility:** Freely resizable with support for ultra-compact floating mode (down to `280px × 320px`).
+  - **Window Flexibility:** Freely resizable with dual title/artist marquee scrolling and ultra-compact floating mode (down to `280px × 320px`).
 
 ---
 
@@ -44,9 +46,9 @@
 
 1. Go to the [**Releases Page**](https://github.com/CiscoZulfikar/LyricsFloat/releases).
 2. Download the latest installer:
-   - **`LyricsFloat Setup 1.1.4.exe`** (Standard Windows Installer Wizard)
-   - *or* **`LyricsFloat-1.1.4-Portable.exe`** (Standalone zero-install executable)
-3. Double-click **`LyricsFloat Setup 1.1.4.exe`** to launch the Setup Wizard.
+   - **`LyricsFloat Setup 1.2.0.exe`** (Standard Windows Installer Wizard)
+   - *or* **`LyricsFloat-1.2.0-Portable.exe`** (Standalone zero-install executable)
+3. Double-click **`LyricsFloat Setup 1.2.0.exe`** to launch the Setup Wizard.
 
 > [!NOTE]
 > **Windows SmartScreen Notice:**

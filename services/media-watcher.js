@@ -10,6 +10,77 @@ class MediaWatcher extends EventEmitter {
     this.currentTrack = null;
     this.isPolling = false;
     this.scriptPath = path.join(__dirname, 'get-media.ps1').replace('app.asar', 'app.asar.unpacked');
+    this.seekScriptPath = path.join(__dirname, 'seek-media.ps1').replace('app.asar', 'app.asar.unpacked');
+    this.controlScriptPath = path.join(__dirname, 'control-media.ps1').replace('app.asar', 'app.asar.unpacked');
+    this.lastSeekTime = 0;
+    this.lastSeekPosition = 0;
+  }
+
+  control(action) {
+    const validActions = {
+      'play-pause': 'PlayPause',
+      'toggle-play': 'PlayPause',
+      'next': 'Next',
+      'previous': 'Previous',
+      'prev': 'Previous',
+      'play': 'Play',
+      'pause': 'Pause'
+    };
+    const mapped = validActions[(action || '').toLowerCase()] || 'PlayPause';
+
+    if (mapped === 'PlayPause' && this.currentTrack) {
+      this.currentTrack.IsPlaying = !this.currentTrack.IsPlaying;
+      this.emit('playback-state', {
+        title: this.currentTrack.Title,
+        artist: this.currentTrack.Artist,
+        positionMs: this.currentTrack.PositionMs || 0,
+        durationMs: this.currentTrack.DurationMs || 0,
+        isPlaying: Boolean(this.currentTrack.IsPlaying)
+      });
+    }
+
+    return new Promise((resolve) => {
+      const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; & '${this.controlScriptPath}' -Action '${mapped}'"`;
+      exec(cmd, { timeout: 2000, encoding: 'utf8' }, (err, stdout) => {
+        if (err) {
+          resolve(false);
+          return;
+        }
+        const ok = stdout && stdout.toLowerCase().includes('true');
+        resolve(Boolean(ok));
+      });
+    });
+  }
+
+  seek(positionMs) {
+    const target = Math.max(0, Math.round(Number(positionMs) || 0));
+    this.lastSeekTime = Date.now();
+    this.lastSeekPosition = target;
+    if (this.currentTrack) {
+      this.currentTrack.PositionMs = target;
+    }
+
+    return new Promise((resolve) => {
+      const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; & '${this.seekScriptPath}' -PositionMs ${target}"`;
+      exec(cmd, { timeout: 2000, encoding: 'utf8' }, (err, stdout) => {
+        if (err) {
+          resolve(false);
+          return;
+        }
+        const ok = stdout && stdout.toLowerCase().includes('true');
+        if (ok && this.currentTrack) {
+          this.currentTrack.PositionMs = target;
+          this.emit('playback-state', {
+            title: this.currentTrack.Title,
+            artist: this.currentTrack.Artist,
+            positionMs: target,
+            durationMs: this.currentTrack.DurationMs || 0,
+            isPlaying: Boolean(this.currentTrack.IsPlaying)
+          });
+        }
+        resolve(Boolean(ok));
+      });
+    });
   }
 
 
@@ -43,6 +114,12 @@ class MediaWatcher extends EventEmitter {
           const trackChanged = !this.currentTrack || 
             this.currentTrack.Title !== data.Title || 
             this.currentTrack.Artist !== data.Artist;
+
+          // If a seek was executed recently (within 1500ms) and track hasn't changed,
+          // suppress stale polled position from WinRT to prevent post-seek back-and-forth jitter
+          if (!trackChanged && this.lastSeekTime && (Date.now() - this.lastSeekTime < 1500)) {
+            data.PositionMs = this.lastSeekPosition;
+          }
 
           this.currentTrack = data;
 

@@ -105,6 +105,44 @@ async function runTest() {
     });
   });
 
+  // Verify Bilingual Portuguese + English Song (São Paulo by The Weeknd feat. Anitta)
+  const saoPauloSong = {
+    title: 'São Paulo (feat. Anitta)',
+    artist: 'The Weeknd',
+    lines: [
+      { timeMs: 1000, text: 'Bota na boca, bota na cara, bota onde quiser' },
+      { timeMs: 2000, text: 'Bota na boca, bota na cara, bota na boca, bota na cara' },
+      { timeMs: 3000, text: 'O novinho me olhou e quis comer minha pepequinha' },
+      { timeMs: 4000, text: 'Hoje eu vou dar pro novinho, fode, fode a Larissinha' },
+      { timeMs: 5000, text: 'Every time I try to run, you put your curse all over me' }
+    ]
+  };
+
+  await new Promise(resolve => {
+    enricher.enrichLyrics(saoPauloSong.title, saoPauloSong.artist, { lines: saoPauloSong.lines }, 'en', (update) => {
+      const line0Trans = update.lines[0].translation;
+      const line1Trans = update.lines[1].translation;
+      const line2Trans = update.lines[2].translation;
+      const line3Trans = update.lines[3].translation;
+      const line4Trans = update.lines[4].translation;
+
+      console.log(`[São Paulo] Line 0 (Bota onde quiser): "${line0Trans}"`);
+      console.log(`[São Paulo] Line 1 (Bota repetido): "${line1Trans}"`);
+      console.log(`[São Paulo] Line 2 (Portuguese): "${line2Trans}"`);
+      console.log(`[São Paulo] Line 3 (Portuguese): "${line3Trans}"`);
+      console.log(`[São Paulo] Line 4 (English): "${line4Trans}" (expected empty)`);
+
+      assert.ok(line0Trans && /mouth|face/i.test(line0Trans), 'Line 0 must translate bota as put/stick');
+      assert.ok(line1Trans && /mouth|face/i.test(line1Trans), 'Line 1 must translate repetitive bota lines');
+      assert.ok(line2Trans && /pussy/i.test(line2Trans), 'Portuguese line 2 must translate pepequinha as pussy');
+      assert.ok(line3Trans && /pussy/i.test(line3Trans), 'Portuguese line 3 must translate Larissinha as pussy');
+      assert.strictEqual(line4Trans, '', 'English line 4 must be suppressed without duplicate translation');
+
+      console.log('Bilingual Portuguese + English test passed!');
+      resolve();
+    });
+  });
+
   // Test Japanese Katakana chanting / vocalization suppression (e.g. "ル・ル・ルルルルル・ルルル・ルルルルルル")
   await new Promise((resolve) => {
     const jpVocalicLyrics = {
@@ -134,6 +172,39 @@ async function runTest() {
   const jojiRes = await enricher.enrichLyrics('Like You Do', 'Joji', jojiLyrics, 'en');
   console.log('[Like You Do] isTranslating:', jojiRes.isTranslating, '(expected false)');
   assert.strictEqual(jojiRes.isTranslating, false, 'Purely English song with en target must set isTranslating to false');
+
+  // Test English song with ambiguous tokens like "die", "sin", "la" (Curl up & Die) -> isTranslating must be false
+  const curlUpDieLyrics = {
+    synced: true,
+    lines: [
+      { timeMs: 1000, text: "When I worshipped the ground you walked on" },
+      { timeMs: 5000, text: "When I'd cut off my ear for you" },
+      { timeMs: 10000, text: "Curl up and die" },
+      { timeMs: 15000, text: "Curl up and die" }
+    ]
+  };
+  const curlRes = await enricher.enrichLyrics('Curl up & Die', 'Matt Maltese', curlUpDieLyrics, 'en');
+  console.log('[Curl up & Die] isTranslating:', curlRes.isTranslating, '(expected false)');
+  assert.strictEqual(curlRes.isTranslating, false, 'English song with word "die" must set isTranslating to false');
+
+  // Test mixed-script line (CJK + English, e.g. Otonoke by Creepy Nuts)
+  await new Promise((resolve) => {
+    const otonokeLyrics = {
+      synced: true,
+      lines: [
+        { timeMs: 28670, text: '四尺四寸四分様がカミナッチャ bang around, hey' }
+      ]
+    };
+    enricher.enrichLyrics('Otonoke Test', 'Creepy Nuts', otonokeLyrics, 'en', (update) => {
+      const trans = update.lines[0].translation;
+      console.log('[Otonoke Mixed Line]', otonokeLyrics.lines[0].text, '-> Translation:', JSON.stringify(trans));
+      assert.ok(trans && trans.includes('bang around'), 'Translation must retain English part');
+      assert.ok(trans && !/^bang around, hey$/i.test(trans), 'Translation must not swallow the Japanese folklore entity');
+      assert.ok(trans && (trans.includes('shaku') || trans.includes('coming at ya') || trans.includes('Kaminaccha') || trans.includes('4')), 'Translation must include translated Japanese segment');
+      console.log('Mixed-script translation recovery test passed!');
+      resolve();
+    });
+  });
 
   console.log('All multi-language tests passed successfully!');
 }

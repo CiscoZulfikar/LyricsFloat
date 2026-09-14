@@ -4,6 +4,44 @@ All notable changes to LyricsFloat will be documented in this file.
 
 ---
 
+## Version 1.2
+
+### [1.2.0] - 2026-09-14 (`260914`)
+
+#### ✨ What's New
+- **Explicit Content Badge [E]:** Songs containing explicit lyrics now display a background-adaptive `[E]` badge beside the title, featuring frosted acrylic blur, theme-reactive cutout styling, and smooth marquee integration.
+- **Tabbed Settings & Preferences:** Preferences are now organized into 4 dedicated tabs (*Theme*, *Lyrics*, *Translation*, *About*) with fluid glide animations, a centered layout for wide displays, and an icon-only mode for compact windows.
+- **Dynamic Header Controls & Hover Expansion:** Playback controls neatly auto-collapse at rest to give long song titles maximum breathing room, expanding with a smooth spring transition when hovering over the header.
+- **Dual Title & Artist Marquee Scrolling:** Overflowing song titles and artist names now smoothly marquee back and forth with edge fading, dynamically adapting whenever the window is resized.
+- **Interactive Timeline Scrubbing:** Click or drag anywhere along the track progress bar to seek playback in Spotify with instant lyric position resynchronization.
+- **Floating "Jump to Singing Line" Chip:** A floating quick-return button appears when manually scrolling away from the lyrics, smoothly snapping the view back to the active singing line on click.
+- **Full-Size Album Artwork Preview:** Clicking the album thumbnail opens a full-size square artwork preview over a frosted acrylic backdrop with fluid zoom entrance and exit transitions.
+- **Japanese Lyric Pronunciation Nuance:** Enhanced Romaji transliteration accuracy for contextual Japanese lyrics, including people counters (*futari*, *hitori*), colloquial suffixes (`〜面` → *zura*), and colloquial mimetic words.
+
+#### 🛠️ What's Been Modified
+- **Symmetrical Marquee Edge Fade Masks:** Overflowing titles and artist names now dissolve smoothly at both edges with symmetrical gradient fade masks, keeping text crisp at rest and seamlessly soft while scrolling.
+- **Modular Frontend Architecture:** Refactored the core frontend into dedicated UI controllers (marquee, playback, settings, and translation), improving responsiveness and architectural maintainability.
+- **Playback Controls Auto-Collapse & Focus Handling:** Refined focus management on the header playback dock so controls reliably auto-collapse after clicking buttons or moving the cursor away.
+- **Refined Track Details Layout & Typography:** Tightened typography line-heights and spacing for both track title and artist, ensuring clean vertical alignment alongside compact and standard album covers.
+- **Seamless Frosted Acrylic Backdrop:** Extended the frosted dark acrylic backdrop across the full window height, eliminating visible background seams behind the drag bar.
+- **Strict English Translation Guard:** Strengthened language detection to prevent accidental translations on English songs while accurately translating Latin-alphabet foreign tracks (Spanish, French, Portuguese, Indonesian).
+- **Customizable Lyrics Text Alignment:** Added dedicated Left, Center, and Right text alignment options in Settings for personalized karaoke lyrics presentation.
+
+#### 🐛 What's Been Fixed
+- **Sticky Playback Controls on Skip:** Fixed an issue where clicking Previous or Next track buttons kept the playback dock locked open due to persistent button focus.
+- **Bilingual Song Translation Support:** Fixed missing translations on bilingual tracks (such as *"São Paulo"* by The Weeknd & Anitta) by preventing false English skips and supporting colloquial regional slang.
+- **English Track Lyrics Matching & Foreign Cover Guard:** Fixed a search scoring bug where English tracks (such as *"this is what falling in love feels like"* by JVKE) could select foreign covers or remixes instead of the exact original lyrics.
+- **Mixed-Script Translation Recovery:** Resolved an issue where translation engines could drop foreign words in bilingual lines (such as Japanese + English in *"Otonoke"* by Creepy Nuts), now translating both sections seamlessly.
+- **Regional Album Artwork & Storefront Search:** Fixed missing album artwork for Japanese, Korean, and international releases (such as *"晴る"* by Yorushika) by detecting scripts and querying regional storefronts.
+- **Duplicate Sub-text & Special Character Normalization:** Fixed tracks with stylized fonts or Greek/fullwidth character variants causing redundant Romaji or identical translation sub-text to display underneath English lines.
+- **Status Notification & Jump Button Stacking:** Dynamically positions the translation status badge above the "Jump to Singing Line" button when both are active, preventing visual overlap and keeping click targets clear.
+- **Synchronous Cached Translation Display:** Cached translations now display immediately when switching tracks, preventing unnecessary loading spinners on previously translated songs.
+- **Case-Insensitive Translation Updates:** Fixed an internal track key case mismatch where songs with capitalized titles or artist names could fail to receive async translation updates.
+- **Translation Status Badge Layout:** Enforced single-line formatting with clean text truncation so the floating translation status badge never wraps awkwardly.
+- **Instant Track Lyrics Refresh:** Clears previous lyrics immediately when switching tracks in Spotify, preventing outdated lines from flashing during track transitions.
+
+---
+
 ## Version 1.1
 
 ### [1.1.4] - 2026-09-08 (`260908`)

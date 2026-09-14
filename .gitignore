@@ -22,4 +22,6 @@ docs/
 
 # Test artifacts
 test/*-temp/
+test/*cache*/
+scratch/
 

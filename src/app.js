@@ -1,523 +1,304 @@
+/**
+ * LyricsFloat - Main Application Orchestrator
+ * Coordinates UI controllers, lyrics sync engine, IPC events, and native Spotify media state.
+ */
+
 document.addEventListener('DOMContentLoaded', async () => {
   const lyricsContainer = document.getElementById('lyrics-stream');
-  const trackTitle = document.getElementById('track-title');
-  const trackArtist = document.getElementById('track-artist');
-  const trackProgressBar = document.getElementById('track-progress-bar');
+  const albumAmbientBackdrop = document.getElementById('album-ambient-backdrop');
   const trackCoverImg = document.getElementById('track-cover-img');
   const trackCoverFallback = document.getElementById('track-cover-fallback');
-  const timeCurrent = document.getElementById('time-current');
-  const timeDuration = document.getElementById('time-duration');
-  const albumAmbientBackdrop = document.getElementById('album-ambient-backdrop');
-
   const btnRomaji = document.getElementById('btn-toggle-romaji');
   const btnTranslation = document.getElementById('btn-toggle-translation');
-  const btnPin = document.getElementById('btn-pin');
-  const btnSettings = document.getElementById('btn-open-settings');
-  const btnCloseSettings = document.getElementById('btn-close-settings');
-  const btnMin = document.getElementById('btn-minimize');
-  const btnClose = document.getElementById('btn-close');
 
-  const settingsModal = document.getElementById('settings-modal');
-  const themeCards = document.querySelectorAll('.theme-card');
-  const selectTargetLang = document.getElementById('select-target-lang');
-  const checkShowRomaji = document.getElementById('check-show-romaji');
-  const checkShowTranslation = document.getElementById('check-show-translation');
-  const checkAlbumTint = document.getElementById('check-album-tint');
-  const langCheckboxes = document.querySelectorAll('input[name="trans-lang"]');
-  const btnLangAll = document.getElementById('btn-lang-all');
-  const btnLangNone = document.getElementById('btn-lang-none');
-  const rangeOrigSize = document.getElementById('range-orig-size');
-  const origSizeVal = document.getElementById('orig-size-val');
-  const rangeSubSize = document.getElementById('range-sub-size');
-  const subSizeVal = document.getElementById('sub-size-val');
+  // 1. Initialize Sub-Controllers
+  const translationPill = new TranslationPillController();
+  const marquee = new MarqueeManager();
 
-  const translationPill = document.getElementById('translation-status-pill');
-  const pillSpinner = document.getElementById('pill-spinner');
-  const pillIcon = document.getElementById('pill-icon');
-  const pillText = document.getElementById('pill-text');
-  let pillHideTimeout = null;
-  let watchdogTimeout = null;
-
-  function setTranslationLoading(isLoading, targetLang = '', immediate = false) {
-    if (!btnTranslation) return;
-    const isTranslationEnabled = !lyricsContainer.classList.contains('hide-translation');
-
-    if (pillHideTimeout) {
-      clearTimeout(pillHideTimeout);
-      pillHideTimeout = null;
-    }
-    if (watchdogTimeout) {
-      clearTimeout(watchdogTimeout);
-      watchdogTimeout = null;
-    }
-
-    if (immediate || !isTranslationEnabled) {
-      btnTranslation.classList.remove('translating');
-      btnTranslation.title = 'Translation (Meaning)';
-      if (translationPill) {
-        translationPill.classList.add('hidden');
-        if (pillSpinner) pillSpinner.style.display = 'none';
-        if (pillIcon) pillIcon.style.display = 'none';
-      }
-      return;
-    }
-
-    if (isLoading) {
-      btnTranslation.classList.add('translating');
-      btnTranslation.title = 'Translating lyrics...';
-
-      if (translationPill) {
-        if (pillSpinner) pillSpinner.style.display = 'inline-block';
-        if (pillIcon) pillIcon.style.display = 'none';
-        if (pillText) {
-          pillText.textContent = 'Translating lyrics...';
-        }
-        translationPill.classList.remove('hidden');
-      }
-
-      // Safety watchdog: emergency dead-man fallback in case of disconnected network (30s)
-      watchdogTimeout = setTimeout(() => {
-        setTranslationLoading(false, '', true);
-      }, 30000);
-    } else {
-      btnTranslation.classList.remove('translating');
-      btnTranslation.title = 'Translation (Meaning)';
-
-      if (translationPill && !translationPill.classList.contains('hidden')) {
-        if (pillSpinner) pillSpinner.style.display = 'none';
-        if (pillIcon) pillIcon.style.display = 'inline-block';
-        if (pillText) pillText.textContent = 'Translation ready';
-
-        pillHideTimeout = setTimeout(() => {
-          translationPill.classList.add('hidden');
-          pillHideTimeout = null;
-        }, 1200);
-      }
-    }
-  }
-
-  let currentDurationMs = 0;
-
-  function formatTime(ms) {
-    if (!ms || isNaN(ms) || ms < 0) return '0:00';
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  }
-
+  let playbackController = null;
   const syncEngine = new LyricsSyncEngine(lyricsContainer, (currentMs) => {
-    if (timeCurrent) {
-      timeCurrent.textContent = formatTime(currentMs);
-    }
-    if (currentDurationMs > 0 && trackProgressBar) {
-      const pct = Math.min(100, Math.max(0, (currentMs / currentDurationMs) * 100));
-      trackProgressBar.style.width = `${pct}%`;
+    if (playbackController && playbackController.isScrubbing) return;
+    if (playbackController) {
+      if (playbackController.timeCurrent) {
+        playbackController.timeCurrent.textContent = playbackController.formatTime(currentMs);
+      }
+      if (playbackController.currentDurationMs > 0 && playbackController.trackProgressBar) {
+        const pct = Math.min(100, Math.max(0, (currentMs / playbackController.currentDurationMs) * 100));
+        playbackController.trackProgressBar.style.width = `${pct}%`;
+      }
     }
   });
 
-  const THEMES = [
-    'theme-neon-violet',
-    'theme-cyberpunk-cyan',
-    'theme-crimson-sunset',
-    'theme-emerald-glass',
-    'theme-nordic-frost'
-  ];
+  playbackController = new PlaybackController({ syncEngine });
 
-  function applyTheme(themeName) {
-    THEMES.forEach(t => document.body.classList.remove(t));
-    const activeTheme = (themeName && THEMES.includes(themeName)) ? themeName : 'theme-neon-violet';
-    document.body.classList.add(activeTheme);
+  const settingsController = new SettingsController({
+    syncEngine,
+    lyricsContainer,
+    btnRomaji,
+    btnTranslation,
+    albumAmbientBackdrop,
+    translationPill: translationPill.translationPill
+  });
 
-    themeCards.forEach(card => {
-      card.classList.toggle('active', card.dataset.theme === activeTheme);
-    });
+  settingsController.onTargetLangChange = (targetLang) => {
+    translationPill.setLoading(true, targetLang);
+  };
+
+  settingsController.onOpen = () => {
+    if (artworkModal && !artworkModal.classList.contains('hidden')) {
+      closeArtworkModal();
+    }
+  };
+
+  const trackCoverWrapper = document.getElementById('track-cover-wrapper');
+  const artworkModal = document.getElementById('artwork-modal');
+  const artworkModalImg = document.getElementById('artwork-modal-img');
+  const btnCloseArtwork = document.getElementById('btn-close-artwork');
+  let artworkCloseTimeout = null;
+
+  function openArtworkModal() {
+    if (!currentCoverUrl || !artworkModal || !artworkModalImg) return;
+    if (settingsController) {
+      settingsController.closeSettings();
+    }
+    if (artworkCloseTimeout) {
+      clearTimeout(artworkCloseTimeout);
+      artworkCloseTimeout = null;
+    }
+    artworkModalImg.src = currentCoverUrl;
+    artworkModal.classList.remove('hidden', 'closing');
   }
 
-  function setOriginalFontSize(sizePx) {
-    const size = parseInt(sizePx, 10) || 22;
-    document.documentElement.style.setProperty('--lyric-orig-size', `${size}px`);
-    if (rangeOrigSize) rangeOrigSize.value = size;
-    if (origSizeVal) origSizeVal.textContent = `${size}px`;
+  function closeArtworkModal() {
+    if (!artworkModal || artworkModal.classList.contains('hidden') || artworkModal.classList.contains('closing')) return;
+    artworkModal.classList.add('closing');
+
+    if (artworkCloseTimeout) clearTimeout(artworkCloseTimeout);
+    artworkCloseTimeout = setTimeout(() => {
+      artworkModal.classList.add('hidden');
+      artworkModal.classList.remove('closing');
+      artworkCloseTimeout = null;
+    }, 220);
   }
 
-  function setSubtextFontSize(sizePx) {
-    const size = parseInt(sizePx, 10) || 12;
-    document.documentElement.style.setProperty('--lyric-sub-size', `${size}px`);
-    if (rangeSubSize) rangeSubSize.value = size;
-    if (subSizeVal) subSizeVal.textContent = `${size}px`;
-  }
-
+  // 2. Cover Art & Visual Ambient Tint
   function setCoverArt(url) {
+    currentCoverUrl = url || null;
     if (url) {
-      trackCoverImg.src = url;
-      trackCoverImg.onload = () => {
-        trackCoverImg.style.display = 'block';
-        if (trackCoverFallback) trackCoverFallback.style.display = 'none';
-      };
-      trackCoverImg.onerror = () => {
-        trackCoverImg.style.display = 'none';
-        if (trackCoverFallback) trackCoverFallback.style.display = 'flex';
-      };
-
+      if (trackCoverImg) {
+        trackCoverImg.src = url;
+        trackCoverImg.onload = () => {
+          trackCoverImg.style.display = 'block';
+          if (trackCoverFallback) trackCoverFallback.style.display = 'none';
+          if (trackCoverWrapper) {
+            trackCoverWrapper.classList.add('has-cover');
+            trackCoverWrapper.title = 'Click to view artwork';
+          }
+        };
+        trackCoverImg.onerror = () => {
+          trackCoverImg.style.display = 'none';
+          if (trackCoverFallback) trackCoverFallback.style.display = 'flex';
+          if (trackCoverWrapper) {
+            trackCoverWrapper.classList.remove('has-cover');
+            trackCoverWrapper.title = '';
+          }
+        };
+      }
       if (albumAmbientBackdrop) {
         albumAmbientBackdrop.style.backgroundImage = `url("${url}")`;
       }
+      if (artworkModal && !artworkModal.classList.contains('hidden') && artworkModalImg) {
+        artworkModalImg.src = url;
+      }
     } else {
-      trackCoverImg.style.display = 'none';
+      if (trackCoverImg) trackCoverImg.style.display = 'none';
       if (trackCoverFallback) trackCoverFallback.style.display = 'flex';
-      if (albumAmbientBackdrop) {
-        albumAmbientBackdrop.style.backgroundImage = 'none';
+      if (trackCoverWrapper) {
+        trackCoverWrapper.classList.remove('has-cover');
+        trackCoverWrapper.title = '';
+      }
+      if (albumAmbientBackdrop) albumAmbientBackdrop.style.backgroundImage = 'none';
+      if (artworkModal && !artworkModal.classList.contains('hidden')) {
+        closeArtworkModal();
       }
     }
   }
 
-  let currentTitle = '';
+  // Full-Size Artwork Modal Handlers (Dismissed by click, no Esc key)
+  if (trackCoverWrapper && artworkModal && artworkModalImg) {
+    trackCoverWrapper.addEventListener('click', () => {
+      openArtworkModal();
+    });
 
-  function updateTitleMarquee(title, force = false) {
-    if (!title || !trackTitle) return;
-    const isSame = title === currentTitle;
-    currentTitle = title;
-    trackTitle.textContent = title;
-    
-    if (isSame && !force && trackTitle.style.animation && trackTitle.style.animation !== 'none') return;
+    artworkModal.addEventListener('click', () => {
+      closeArtworkModal();
+    });
 
-    trackTitle.style.animation = 'none';
-    trackTitle.style.transform = 'none';
+    if (btnCloseArtwork) {
+      btnCloseArtwork.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeArtworkModal();
+      });
+    }
 
-    requestAnimationFrame(() => {
-      const container = trackTitle.parentElement;
-      if (!container) return;
-      const overflow = trackTitle.scrollWidth - container.clientWidth;
-      if (overflow > 4) {
-        const duration = Math.max(7, Math.round((overflow / 18) + 4));
-        const keyframeId = `marquee_${Math.round(overflow)}`;
-        let styleTag = document.getElementById('dyn-marquee-style');
-        if (!styleTag) {
-          styleTag = document.createElement('style');
-          styleTag.id = 'dyn-marquee-style';
-          document.head.appendChild(styleTag);
+    const btnSettings = document.getElementById('btn-open-settings');
+    if (btnSettings) {
+      btnSettings.addEventListener('click', () => {
+        if (artworkModal && !artworkModal.classList.contains('hidden')) {
+          closeArtworkModal();
         }
-        styleTag.textContent = `
-          @keyframes ${keyframeId} {
-            0%, 20% { transform: translateX(0); }
-            55%, 75% { transform: translateX(-${overflow + 8}px); }
-            100% { transform: translateX(0); }
-          }
-        `;
-        trackTitle.style.animation = `${keyframeId} ${duration}s ease-in-out infinite`;
-      } else {
-        trackTitle.style.animation = 'none';
-        trackTitle.style.transform = 'none';
-      }
-    });
+      });
+    }
   }
 
-  const titleContainer = trackTitle ? trackTitle.parentElement : null;
-  if (titleContainer && typeof ResizeObserver !== 'undefined') {
-    const titleObserver = new ResizeObserver(() => {
-      if (currentTitle) updateTitleMarquee(currentTitle, true);
-    });
-    titleObserver.observe(titleContainer);
+  function normalizeTrackKey(title, artist) {
+    const t = (title || '').trim().normalize('NFC').toLowerCase();
+    const a = (artist || '').trim().normalize('NFC').toLowerCase();
+    return `${t}___${a}`;
   }
 
-  window.addEventListener('resize', () => {
-    if (currentTitle) updateTitleMarquee(currentTitle, true);
-  });
+  let currentTrackKey = '';
+  let loadedTrackKey = '';
+  let lastEnrichedData = null;
 
+  function updateToolbarCapabilities() {
+    if (!syncEngine) return;
+    const hasRomaji = syncEngine.hasRomaji();
+    const hasTrans = syncEngine.hasTranslation();
+    const isTranslating = Boolean(lastEnrichedData && lastEnrichedData.isTranslating);
+
+    if (btnRomaji) {
+      btnRomaji.classList.toggle('disabled', !hasRomaji);
+      btnRomaji.title = hasRomaji ? 'Pronunciation / Romaji (あ→a)' : 'Romaji unavailable for this track';
+    }
+
+    if (btnTranslation) {
+      btnTranslation.classList.toggle('disabled', !hasTrans && !isTranslating);
+      btnTranslation.title = (hasTrans || isTranslating)
+        ? 'Translation (Meaning)'
+        : 'Translation unavailable for this track';
+    }
+  }
+
+  const badgeExplicit = document.getElementById('badge-explicit');
+  let currentIsExplicit = false;
+
+  function setExplicitBadge(isExplicit) {
+    const explicit = Boolean(isExplicit);
+    if (currentIsExplicit === explicit) return;
+    currentIsExplicit = explicit;
+    if (badgeExplicit) {
+      badgeExplicit.classList.toggle('hidden', !explicit);
+    }
+    if (marquee) {
+      marquee.refresh();
+    }
+  }
 
   function applyPlaybackState(state) {
     if (!state) return;
-    if (state.title) updateTitleMarquee(state.title);
-    if (state.artist) trackArtist.textContent = state.artist;
 
+    const newTrackKey = normalizeTrackKey(state.title, state.artist);
+    const isNewTrack = Boolean(newTrackKey && currentTrackKey && newTrackKey !== currentTrackKey);
 
-    if (state.coverUrl) {
-      setCoverArt(state.coverUrl);
+    if (isNewTrack) {
+      currentTrackKey = newTrackKey;
+      if (loadedTrackKey !== newTrackKey) {
+        syncEngine.showLoading(state.title, state.artist);
+        translationPill.setLoading(false, '', true);
+        if (!state.coverUrl) setCoverArt(null);
+        if (state.isExplicit === undefined) setExplicitBadge(false);
+      }
+    } else if (!currentTrackKey && newTrackKey) {
+      currentTrackKey = newTrackKey;
     }
 
-    if (state.durationMs > 0) {
-      currentDurationMs = state.durationMs;
-      if (timeDuration) timeDuration.textContent = formatTime(state.durationMs);
-      const pct = Math.min(100, Math.max(0, (state.positionMs / state.durationMs) * 100));
-      if (trackProgressBar) trackProgressBar.style.width = `${pct}%`;
+    if (state.isExplicit !== undefined) {
+      setExplicitBadge(state.isExplicit);
     }
 
-    if (timeCurrent && state.positionMs >= 0) {
-      timeCurrent.textContent = formatTime(state.positionMs);
-    }
+    if (state.title) marquee.updateTitle(state.title);
+    if (state.artist) marquee.updateArtist(state.artist);
+    if (state.coverUrl) setCoverArt(state.coverUrl);
 
+    playbackController.updatePlaybackState(state);
     syncEngine.updatePlaybackState(state);
   }
 
-  // Load initial state & configuration
+  // 3. Load Initial Configuration & Playback State
   if (window.lyricsFloatAPI) {
     const initialState = await window.lyricsFloatAPI.getCurrentState();
     if (initialState) {
-      const config = initialState.config;
-      if (config) {
-        if (config.theme) {
-          applyTheme(config.theme);
-        }
-        if (config.originalFontSize) {
-          setOriginalFontSize(config.originalFontSize);
-        }
-        if (config.subtextFontSize) {
-          setSubtextFontSize(config.subtextFontSize);
-        }
-        if (config.showRomaji === false) {
-          lyricsContainer.classList.add('hide-romaji');
-          btnRomaji.classList.remove('active');
-          checkShowRomaji.checked = false;
-        }
-        if (config.showTranslation === false) {
-          lyricsContainer.classList.add('hide-translation');
-          btnTranslation.classList.remove('active');
-          checkShowTranslation.checked = false;
-        }
-        if (config.albumArtTint === false) {
-          if (albumAmbientBackdrop) albumAmbientBackdrop.classList.add('disabled');
-          if (checkAlbumTint) checkAlbumTint.checked = false;
-        }
-        if (Array.isArray(config.enabledTranslateLanguages)) {
-          langCheckboxes.forEach(cb => {
-            cb.checked = config.enabledTranslateLanguages.includes(cb.value);
-          });
-        }
-
-        if (config.targetLanguage) {
-          selectTargetLang.value = config.targetLanguage;
-        }
-
-        if (config.alwaysOnTop === false) {
-          btnPin.classList.remove('active');
-        }
+      if (initialState.config) {
+        settingsController.initFromConfig(initialState.config);
       }
-
       if (initialState.playbackState) {
         applyPlaybackState(initialState.playbackState);
       }
       if (initialState.lyrics) {
+        lastEnrichedData = initialState.lyrics;
+        const initialLyricsKey = normalizeTrackKey(initialState.lyrics.title, initialState.lyrics.artist);
+        if (initialLyricsKey) {
+          loadedTrackKey = initialLyricsKey;
+          currentTrackKey = initialLyricsKey;
+        }
         if (initialState.lyrics.coverUrl) {
           setCoverArt(initialState.lyrics.coverUrl);
         }
+        if (initialState.lyrics.isExplicit !== undefined) {
+          setExplicitBadge(initialState.lyrics.isExplicit);
+        }
         syncEngine.loadLyrics(initialState.lyrics);
-        setTranslationLoading(Boolean(initialState.lyrics.isTranslating), initialState.lyrics.targetLang);
+        updateToolbarCapabilities();
+        translationPill.setLoading(Boolean(initialState.lyrics.isTranslating), initialState.lyrics.targetLang);
       }
     }
-  }
 
-  // Theme Swatch Grid Selection
-  themeCards.forEach(card => {
-    card.addEventListener('click', () => {
-      const theme = card.dataset.theme;
-      applyTheme(theme);
-      if (window.lyricsFloatAPI) {
-        window.lyricsFloatAPI.saveConfig('theme', theme);
-      }
-    });
-  });
-
-  // Font Size Sliders
-  if (rangeOrigSize) {
-    rangeOrigSize.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value, 10);
-      setOriginalFontSize(val);
-      if (window.lyricsFloatAPI) {
-        window.lyricsFloatAPI.saveConfig('originalFontSize', val);
-      }
-    });
-  }
-
-  if (rangeSubSize) {
-    rangeSubSize.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value, 10);
-      setSubtextFontSize(val);
-      if (window.lyricsFloatAPI) {
-        window.lyricsFloatAPI.saveConfig('subtextFontSize', val);
-      }
-    });
-  }
-
-  // Album Art Background Tint Toggle
-  if (checkAlbumTint) {
-    checkAlbumTint.addEventListener('change', (e) => {
-      const isEnabled = e.target.checked;
-      if (albumAmbientBackdrop) {
-        albumAmbientBackdrop.classList.toggle('disabled', !isEnabled);
-      }
-      if (window.lyricsFloatAPI) {
-        window.lyricsFloatAPI.saveConfig('albumArtTint', isEnabled);
-      }
-    });
-  }
-
-  // Toolbar Toggles
-  btnRomaji.addEventListener('click', () => {
-    const isHidden = lyricsContainer.classList.toggle('hide-romaji');
-    btnRomaji.classList.toggle('active', !isHidden);
-    checkShowRomaji.checked = !isHidden;
-    if (window.lyricsFloatAPI) window.lyricsFloatAPI.saveConfig('showRomaji', !isHidden);
-  });
-
-  btnTranslation.addEventListener('click', () => {
-    const isHidden = lyricsContainer.classList.toggle('hide-translation');
-    btnTranslation.classList.toggle('active', !isHidden);
-    checkShowTranslation.checked = !isHidden;
-    if (isHidden && translationPill) {
-      translationPill.classList.add('hidden');
-      btnTranslation.classList.remove('translating');
-    }
-    if (window.lyricsFloatAPI) window.lyricsFloatAPI.saveConfig('showTranslation', !isHidden);
-  });
-
-  btnPin.addEventListener('click', () => {
-    const isActive = btnPin.classList.toggle('active');
-    if (window.lyricsFloatAPI) window.lyricsFloatAPI.setAlwaysOnTop(isActive);
-  });
-
-  btnMin.addEventListener('click', () => {
-    if (window.lyricsFloatAPI) window.lyricsFloatAPI.minimizeWindow();
-  });
-
-  btnClose.addEventListener('click', () => {
-    if (window.lyricsFloatAPI) window.lyricsFloatAPI.closeWindow();
-  });
-
-  // Settings Modal Handlers
-  btnSettings.addEventListener('click', () => {
-    settingsModal.classList.remove('hidden');
-  });
-
-  btnCloseSettings.addEventListener('click', () => {
-    settingsModal.classList.add('hidden');
-  });
-
-  settingsModal.addEventListener('click', (e) => {
-    if (e.target === settingsModal) {
-      settingsModal.classList.add('hidden');
-    }
-  });
-
-  selectTargetLang.addEventListener('change', (e) => {
-    const targetLang = e.target.value;
-    setTranslationLoading(true, targetLang);
-    if (window.lyricsFloatAPI) {
-      window.lyricsFloatAPI.setTargetLanguage(targetLang);
-    }
-  });
-
-  checkShowRomaji.addEventListener('change', (e) => {
-    const isVisible = e.target.checked;
-    lyricsContainer.classList.toggle('hide-romaji', !isVisible);
-    btnRomaji.classList.toggle('active', isVisible);
-    if (window.lyricsFloatAPI) window.lyricsFloatAPI.saveConfig('showRomaji', isVisible);
-  });
-
-  checkShowTranslation.addEventListener('change', (e) => {
-    const isVisible = e.target.checked;
-    lyricsContainer.classList.toggle('hide-translation', !isVisible);
-    btnTranslation.classList.toggle('active', isVisible);
-    if (!isVisible && translationPill) {
-      translationPill.classList.add('hidden');
-      btnTranslation.classList.remove('translating');
-    }
-    if (window.lyricsFloatAPI) window.lyricsFloatAPI.saveConfig('showTranslation', isVisible);
-  });
-
-  function saveLanguageChecklist() {
-    const selected = Array.from(langCheckboxes)
-      .filter(cb => cb.checked)
-      .map(cb => cb.value);
-    if (window.lyricsFloatAPI) {
-      window.lyricsFloatAPI.saveConfig('enabledTranslateLanguages', selected);
-      window.lyricsFloatAPI.setEnabledLanguages(selected);
-    }
-  }
-
-  langCheckboxes.forEach(cb => {
-    cb.addEventListener('change', saveLanguageChecklist);
-  });
-
-  if (btnLangAll) {
-    btnLangAll.addEventListener('click', () => {
-      langCheckboxes.forEach(cb => cb.checked = true);
-      saveLanguageChecklist();
-    });
-  }
-
-  if (btnLangNone) {
-    btnLangNone.addEventListener('click', () => {
-      langCheckboxes.forEach(cb => cb.checked = false);
-      saveLanguageChecklist();
-    });
-  }
-
-  // In-App Changelog Toggle
-  const changelogToggle = document.getElementById('changelog-toggle');
-  const changelogBody = document.getElementById('changelog-body');
-  const changelogArrow = document.getElementById('changelog-arrow');
-  if (changelogToggle && changelogBody) {
-    changelogToggle.addEventListener('click', () => {
-      const isHidden = changelogBody.style.display === 'none' || !changelogBody.style.display;
-      changelogBody.style.display = isHidden ? 'flex' : 'none';
-      if (changelogArrow) {
-        changelogArrow.textContent = isHidden ? '▲' : '▼';
-      }
-    });
-  }
-
-  // Collapsible Major Version Groups
-  document.querySelectorAll('.group-header[data-toggle="group"]').forEach(header => {
-    header.addEventListener('click', () => {
-      const content = header.nextElementSibling;
-      const arrow = header.querySelector('.group-arrow');
-      if (content) {
-        const isHidden = content.style.display === 'none';
-        content.style.display = isHidden ? 'flex' : 'none';
-        if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
-      }
-    });
-  });
-
-  // Collapsible Minor Releases
-  document.querySelectorAll('.release-header[data-toggle="release"]').forEach(header => {
-    header.addEventListener('click', () => {
-      const content = header.nextElementSibling;
-      const arrow = header.querySelector('.release-arrow');
-      if (content) {
-        const isHidden = content.style.display === 'none';
-        content.style.display = isHidden ? 'flex' : 'none';
-        if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
-      }
-    });
-  });
-
-  // IPC Event Subscriptions
-  if (window.lyricsFloatAPI) {
+    // 4. IPC Event Subscriptions
     window.lyricsFloatAPI.onPlaybackState((state) => {
       applyPlaybackState(state);
     });
 
     window.lyricsFloatAPI.onLyricsLoaded((enrichedData) => {
+      lastEnrichedData = enrichedData;
+      const enrichedKey = normalizeTrackKey(enrichedData?.title, enrichedData?.artist);
+      if (enrichedKey) {
+        loadedTrackKey = enrichedKey;
+        currentTrackKey = enrichedKey;
+      }
       if (enrichedData && enrichedData.coverUrl) {
         setCoverArt(enrichedData.coverUrl);
       }
+      if (enrichedData && enrichedData.isExplicit !== undefined) {
+        setExplicitBadge(enrichedData.isExplicit);
+      }
       syncEngine.loadLyrics(enrichedData);
-      if (enrichedData && enrichedData.isTranslating) {
-        setTranslationLoading(true, enrichedData.targetLang);
+      updateToolbarCapabilities();
+
+      const hasTranslations = Array.isArray(enrichedData?.lines) &&
+        enrichedData.lines.some(l => l.translation && l.translation.trim().length > 0);
+
+      if (hasTranslations || !enrichedData?.isTranslating) {
+        translationPill.setLoading(false, '', true);
       } else {
-        setTranslationLoading(false, '', true);
+        translationPill.setLoading(true, enrichedData.targetLang);
       }
     });
 
     window.lyricsFloatAPI.onLyricsTranslationUpdated((translationUpdate) => {
+      if (lastEnrichedData) {
+        lastEnrichedData.isTranslating = false;
+      }
       syncEngine.updateTranslations(translationUpdate);
-      const hasAny = Array.isArray(translationUpdate.lines) && translationUpdate.lines.some(l => l.translation && l.translation.trim().length > 0);
+      updateToolbarCapabilities();
+
+      const hasAny = Array.isArray(translationUpdate.lines) &&
+        translationUpdate.lines.some(l => l.translation && l.translation.trim().length > 0);
+
       if (hasAny) {
-        setTranslationLoading(false);
+        translationPill.setLoading(false);
       } else {
-        setTranslationLoading(false, '', true);
+        translationPill.setLoading(false, '', true);
       }
     });
   }

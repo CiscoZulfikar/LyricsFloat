@@ -3,26 +3,65 @@ const path = require('path');
 
 const CJK_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
 
-function scoreCandidate(item, targetDurationSec, anyResultHasCJK) {
+function scoreCandidate(item, title, artist, targetDurationSec) {
   let score = 0;
   if (item.syncedLyrics) score += 10000;
+  else if (item.plainLyrics) score += 2000;
+
+  const targetTitleNorm = (title || '').toLowerCase().trim();
+  const itemTitleNorm = (item.trackName || '').toLowerCase().trim();
+  const targetArtistNorm = (artist || '').toLowerCase().trim();
+  const itemArtistNorm = (item.artistName || '').toLowerCase().trim();
+
+  // 1. Title Matching
+  if (itemTitleNorm === targetTitleNorm) {
+    score += 6000;
+  } else if (itemTitleNorm.startsWith(targetTitleNorm)) {
+    score += 2000;
+    // Heavily penalize foreign translated versions (e.g. "Mandarin Version") or remixes if target did not request it
+    const hasUnwantedExtra = /\((mandarin|chinese|japanese|korean|remix|cover|karaoke|instrumental|live|acoustic|tribute)/i.test(itemTitleNorm);
+    const targetWantedExtra = /\((mandarin|chinese|japanese|korean|remix|cover|karaoke|instrumental|live|acoustic|tribute)/i.test(targetTitleNorm);
+    if (hasUnwantedExtra && !targetWantedExtra) {
+      score -= 8000;
+    }
+  } else {
+    score -= 3000;
+  }
+
+  // 2. Artist Matching
+  if (itemArtistNorm === targetArtistNorm) {
+    score += 4000;
+  } else if (itemArtistNorm.includes(targetArtistNorm)) {
+    score += 1500;
+  } else {
+    score -= 3000;
+  }
+
+  // 3. CJK Script Alignment
+  const queryHasCJK = CJK_REGEX.test(title) || CJK_REGEX.test(artist);
   const lyrics = item.syncedLyrics || item.plainLyrics || '';
   const itemHasCJK = CJK_REGEX.test(lyrics);
 
-  // If any candidate has native CJK characters, heavily prioritize native script over romaji uploads
-  if (anyResultHasCJK) {
-    if (itemHasCJK) {
-      score += 5000;
+  if (queryHasCJK) {
+    // For native CJK tracks, prioritize native script over romaji uploads
+    if (itemHasCJK) score += 3000;
+    else score -= 2000;
+  } else {
+    // For non-CJK tracks (e.g. English, Spanish), penalize CJK lyrics
+    // (prevents Mandarin/Japanese covers from hijacking original songs)
+    if (itemHasCJK) score -= 8000;
+  }
+
+  // 4. Duration Proximity
+  if (targetDurationSec > 0 && item.duration > 0) {
+    const diff = Math.abs(item.duration - targetDurationSec);
+    if (diff <= 2) {
+      score += 2000;
     } else {
-      score -= 3000;
+      score -= Math.min(diff * 20, 5000);
     }
   }
 
-  // Duration proximity
-  if (targetDurationSec > 0 && item.duration > 0) {
-    const diff = Math.abs(item.duration - targetDurationSec);
-    score -= diff * 10;
-  }
   return score;
 }
 
@@ -82,28 +121,42 @@ class LyricsService {
       if (durationSec) params.append('duration', Math.round(durationSec));
 
       const url = `https://lrclib.net/api/get?${params.toString()}`;
-      const res = await fetch(url, { headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' } });
+      const res = await fetch(url, { 
+        headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
+        signal: AbortSignal.timeout(4500)
+      });
 
       let data = null;
       if (res.status === 200) {
         data = await res.json();
       }
 
-      // If exact get has no synced lyrics OR lacks native CJK script when available:
+      // Exact get evaluation:
       const exactHasSynced = data && Boolean(data.syncedLyrics);
       const exactHasCJK = exactHasSynced && CJK_REGEX.test(data.syncedLyrics);
+      const queryHasCJK = CJK_REGEX.test(title) || CJK_REGEX.test(artist);
 
-      if (!exactHasSynced || !exactHasCJK) {
+      // Only search if:
+      // 1. Exact get didn't return synced lyrics, OR
+      // 2. The query itself has CJK characters, but exact get only had romaji/latin lyrics
+      const needsSearch = !exactHasSynced || (queryHasCJK && !exactHasCJK);
+
+      if (needsSearch) {
         const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${title} ${artist}`)}`;
-        const searchRes = await fetch(searchUrl, { headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' } });
+        const searchRes = await fetch(searchUrl, { 
+          headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
+          signal: AbortSignal.timeout(4500)
+        });
         if (searchRes.ok) {
           const list = await searchRes.json();
           if (Array.isArray(list) && list.length > 0) {
-            const anyResultHasCJK = list.some(item => CJK_REGEX.test(item.syncedLyrics || item.plainLyrics || ''));
-            list.sort((a, b) => scoreCandidate(b, durationSec, anyResultHasCJK) - scoreCandidate(a, durationSec, anyResultHasCJK));
+            list.sort((a, b) => scoreCandidate(b, title, artist, durationSec) - scoreCandidate(a, title, artist, durationSec));
 
             const best = list[0];
-            if (!exactHasSynced || (anyResultHasCJK && !exactHasCJK && CJK_REGEX.test(best.syncedLyrics || ''))) {
+            // Only replace exact get if:
+            // - exact get had no synced lyrics, OR
+            // - query is CJK, exact had no CJK, and best candidate DOES have CJK
+            if (!exactHasSynced || (queryHasCJK && !exactHasCJK && CJK_REGEX.test(best.syncedLyrics || ''))) {
               data = best;
             }
           }

@@ -46,7 +46,19 @@ async function runIntegration() {
   assert.strictEqual(englishEnriched.isForeign, false);
   assert.strictEqual(englishEnriched.lines[0].romaji, '');
 
-  // 3. Test ConfigStore
+  // 3. Test accurate English track fetch (prevent CJK remix/translation hijacking)
+  const jvkeLyrics = await lyricsService.fetchLyrics({
+    title: 'this is what falling in love feels like',
+    artist: 'JVKE',
+    durationSec: 120
+  });
+  assert.ok(jvkeLyrics && jvkeLyrics.synced, 'JVKE lyrics should be synced');
+  const allJvkeText = jvkeLyrics.lines.map(l => l.text).join(' ');
+  const hasCJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(allJvkeText);
+  assert.strictEqual(hasCJK, false, 'JVKE lyrics should NOT contain CJK/Mandarin translation text');
+  assert.ok(allJvkeText.includes('Feel like sun on my skin'), 'JVKE lyrics should contain original English text');
+
+  // 4. Test ConfigStore
   const config = new ConfigStore(path.join(testCacheDir, 'test-config.json'));
   assert.strictEqual(config.get('showRomaji'), true);
   config.set('targetLanguage', 'id');

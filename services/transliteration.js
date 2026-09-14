@@ -88,26 +88,41 @@ function romanizeByMap(text, map) {
 
 const path = require('path');
 
+const HOMOGLYPH_MAP = {
+  // Cyrillic
+  '\u0430': 'a', '\u0410': 'A',
+  '\u0432': 'b', '\u0412': 'B',
+  '\u0441': 'c', '\u0421': 'C',
+  '\u0435': 'e', '\u0415': 'E',
+  '\u0456': 'i', '\u0406': 'I',
+  '\u0458': 'j', '\u0408': 'J',
+  '\u043a': 'k', '\u041a': 'K',
+  '\u043c': 'm', '\u041c': 'M',
+  '\u043d': 'h', '\u041d': 'H',
+  '\u043e': 'o', '\u041e': 'O',
+  '\u0440': 'p', '\u0420': 'P',
+  '\u0442': 't', '\u0422': 'T',
+  '\u0443': 'y', '\u0423': 'Y',
+  '\u0445': 'x', '\u0425': 'X',
+  // Greek uppercase homoglyphs
+  '\u0391': 'A', '\u0392': 'B', '\u0395': 'E', '\u0396': 'Z',
+  '\u0397': 'H', '\u0399': 'I', '\u039A': 'K', '\u039C': 'M',
+  '\u039D': 'N', '\u039F': 'O', '\u03A1': 'P', '\u03A4': 'T',
+  '\u03A5': 'Y', '\u03A7': 'X',
+  // Greek lowercase homoglyphs
+  '\u03BF': 'o', '\u03C1': 'p', '\u03BD': 'v'
+};
+
+const HOMOGLYPH_REGEX = /[\u0430\u0410\u0432\u0412\u0441\u0421\u0435\u0415\u0456\u0406\u0458\u0408\u043a\u041a\u043c\u041c\u043d\u041d\u043e\u041e\u0440\u0420\u0442\u0422\u0443\u0423\u0445\u0425\u0391\u0392\u0395\u0396\u0397\u0399\u039A\u039C\u039D\u039F\u03A1\u03A4\u03A5\u03A7\u03BF\u03C1\u03BD\uFF21-\uFF5A]/g;
+
 function normalizeHomoglyphs(text) {
   if (!text || typeof text !== 'string') return text;
-  return text.replace(/[\u0430\u0410\u0432\u0412\u0441\u0421\u0435\u0415\u0456\u0406\u0458\u0408\u043a\u041a\u043c\u041c\u043d\u041d\u043e\u041e\u0440\u0420\u0442\u0422\u0443\u0423\u0445\u0425]/g, (ch) => {
-    const map = {
-      '\u0430': 'a', '\u0410': 'A',
-      '\u0432': 'b', '\u0412': 'B',
-      '\u0441': 'c', '\u0421': 'C',
-      '\u0435': 'e', '\u0415': 'E',
-      '\u0456': 'i', '\u0406': 'I',
-      '\u0458': 'j', '\u0408': 'J',
-      '\u043a': 'k', '\u041a': 'K',
-      '\u043c': 'm', '\u041c': 'M',
-      '\u043d': 'h', '\u041d': 'H',
-      '\u043e': 'o', '\u041e': 'O',
-      '\u0440': 'p', '\u0420': 'P',
-      '\u0442': 't', '\u0422': 'T',
-      '\u0443': 'y', '\u0423': 'Y',
-      '\u0445': 'x', '\u0425': 'X'
-    };
-    return map[ch] || ch;
+  return text.replace(HOMOGLYPH_REGEX, (ch) => {
+    const code = ch.charCodeAt(0);
+    // Fullwidth Latin: A-Z (0xFF21-0xFF3A), a-z (0xFF41-0xFF5A)
+    if (code >= 0xFF21 && code <= 0xFF3A) return String.fromCharCode(code - 0xFEE0);
+    if (code >= 0xFF41 && code <= 0xFF5A) return String.fromCharCode(code - 0xFEE0);
+    return HOMOGLYPH_MAP[ch] || ch;
   });
 }
 
@@ -133,8 +148,50 @@ const JAPANESE_LYRIC_OVERRIDES = [
   { pattern: /(?<![一二三四五六七八九十])二人(?!三脚)/g, replacement: 'ふたり' },
 
   // Grammatical boundary: particle で + verb して (avoids Kuromoji misparsing as 'でし' + 'て')
-  { pattern: /(?<=[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])でして(?=[んるたよねも欲しい]|$)/g, replacement: 'で して' }
+  { pattern: /(?<=[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])でして(?=[んるたよねも欲しい]|$)/g, replacement: 'で して' },
+
+  // Buddhist & literary idioms / proper nouns often missing from IPADIC
+  // Prevents mangled readings like '怨親平等' -> '怨 oya byōdō'
+  { pattern: /怨親平等/g, replacement: 'オンシン平等' },
+  { pattern: /怨親/g, replacement: 'オンシン' },
+  { pattern: /廻廻奇譚/g, replacement: 'カイカイキタン' },
+  { pattern: /両面宿儺/g, replacement: 'リョウメンスクナ' },
+  { pattern: /宿儺/g, replacement: 'スクナ' },
+
+  // J-Pop & anime lyric nuance idioms (e.g. King Gnu - SPECIALZ)
+  { pattern: /際際/g, replacement: 'キワキワ' },
+  { pattern: /興の都/g, replacement: 'きょうのみやこ' },
+  { pattern: /悪い面/g, replacement: '悪い つら' },
+  { pattern: /如何(痴れ者|余所者)/g, replacement: 'どんな$1' },
+  { pattern: /廻遊/g, replacement: 'カイユウ ' },
+  { pattern: /儘/g, replacement: 'まま' },
+  { pattern: /廻る/g, replacement: 'まわる' },
+  { pattern: /如何言おうと/g, replacement: 'どう言おうと' },
+  { pattern: /大荒れ/g, replacement: 'おお荒れ' },
+  { pattern: /氣裸氣裸/g, replacement: 'ギラギラ' },
+  { pattern: /其体温/g, replacement: ' その体温' },
+  { pattern: /(?<![一-龠])其(?=[一-龠])/g, replacement: ' その ' }
 ];
+
+// Fallback romaji map for standalone rare/Joyo kanji that Kuromoji's IPADIC flags as UNKNOWN
+const KANJI_FALLBACK_ROMAJI = {
+  '怨': 'on', '儺': 'na', '鬱': 'utsu', '憬': 'kei', '箋': 'sen',
+  '苛': 'ka', '蔑': 'betsu', '毀': 'ki', '緻': 'chi', '傲': 'gō',
+  '氾': 'han', '璧': 'heki', '呪': 'juso', '譚': 'tan', '廻': 'kai',
+  '繋': 'tsunagi', '呟': 'tsubuyaki', '弄': 'rō', '醒': 'sei', '彷': 'hō',
+  '徨': 'kō', '儚': 'hakanai', '綻': 'hokorobi', '仄': 'hono', '掠': 'kasuri',
+  '歪': 'hizumi', '蝕': 'shoku', '謳': 'ō', '錆': 'sabi', '儘': 'mama',
+  '其': 'sono', '氣': 'ki', '遊': 'asobi', '際': 'kiwa',
+  '疼': 'uzuki', '軋': 'kishimi', '轢': 'reki', '嘲': 'azawari', '煽': 'aori',
+  '蠢': 'ugomeki', '慄': 'ritsu', '悶': 'mon', '憐': 'awaremi', '悍': 'kan'
+};
+
+function resolveRemainingKanji(romaji) {
+  if (!romaji || !/[\u4E00-\u9FAF]/.test(romaji)) return romaji;
+  return romaji.replace(/[\u4E00-\u9FAF]/g, (ch) => {
+    return KANJI_FALLBACK_ROMAJI[ch] ? ` ${KANJI_FALLBACK_ROMAJI[ch]} ` : '';
+  }).replace(/\s+/g, ' ').trim();
+}
 
 function applyJapaneseLyricOverrides(text) {
   if (!text || typeof text !== 'string') return text;
@@ -185,12 +242,12 @@ class TransliterationService {
       return 'chinese';
     }
 
-    // Clean confusable homoglyphs before checking Cyrillic
+    // Clean confusable homoglyphs before checking Cyrillic and Greek
     const cleaned = normalizeHomoglyphs(text);
     // Cyrillic (Russian, Ukrainian, Belarusian, Bulgarian, Serbian)
     if (/[\u0400-\u04FF]/.test(cleaned)) return 'cyrillic';
     // Greek
-    if (/[\u0370-\u03FF]/.test(text)) return 'greek';
+    if (/[\u0370-\u03FF]/.test(cleaned)) return 'greek';
     // Arabic / Persian / Urdu
     if (/[\u0600-\u06FF\u0750-\u077F]/.test(text)) return 'arabic';
     // Devanagari (Hindi, Marathi, Nepali, Sanskrit)
@@ -212,15 +269,16 @@ class TransliterationService {
         await this.init();
         const lyricText = applyJapaneseLyricOverrides(text);
         if (this.kuroshiro && this.kuroshiro._analyzer) {
-          const romaji = await this.kuroshiro.convert(lyricText, {
+          const rawRomaji = await this.kuroshiro.convert(lyricText, {
             to: 'romaji',
             mode: 'spaced',
             romajiSystem: 'hepburn'
           });
-          return romaji.replace(/\s+/g, ' ').trim();
+          const cleanRomaji = rawRomaji.replace(/\s+/g, ' ').trim();
+          return resolveRemainingKanji(cleanRomaji);
         } else {
           // Fallback to wanakana
-          return wanakana.toRomaji(lyricText);
+          return resolveRemainingKanji(wanakana.toRomaji(lyricText));
         }
       }
 
@@ -296,7 +354,13 @@ class TransliterationService {
       }
 
       // Only transliterate if the line actually contains non-Latin script (Kanji, Kana, Hangul, Hanzi)
-      const romaji = lineScript !== 'latin' ? await this.transliterateLine(lineText, lineScript) : '';
+      let romaji = lineScript !== 'latin' ? await this.transliterateLine(lineText, lineScript) : '';
+      if (romaji) {
+        const norm = (s) => (s || '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
+        if (norm(normalizeHomoglyphs(romaji)) === norm(normalizeHomoglyphs(lineText))) {
+          romaji = '';
+        }
+      }
       results.push({
         timeMs: line.timeMs,
         original: lineText,

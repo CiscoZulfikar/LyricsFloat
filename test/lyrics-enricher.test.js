@@ -66,6 +66,36 @@ async function runTests() {
   // Line 1 has NO Romaji -> collapsed to max 3 words + ellipsis!
   assert.strictEqual(vocalicUpdate.lines[1].translation, 'Olay olay olay...', 'Repetitive vocalization without Romaji should be collapsed');
 
+  // Test Japanese lyric mimetic adverb (e.g. YOASOBI - Idol "のらりくらり")
+  enricher.transliterationService.transliterateLyrics = async (lines) => {
+    return [
+      { timeMs: 1000, original: '何を聞かれても', romaji: 'nani o kika re te mo' },
+      { timeMs: 2000, original: 'のらりくらり', romaji: 'norarikurari' }
+    ];
+  };
+  enricher.translationService.translateLyrics = async () => {
+    return [
+      { timeMs: 1000, translation: 'No matter what you ask', detectedLang: 'ja' },
+      { timeMs: 2000, translation: 'Nonchalantly', detectedLang: 'ja' }
+    ];
+  };
+
+  const idolLyrics = {
+    synced: true,
+    lines: [
+      { timeMs: 1000, text: '何を聞かれても' },
+      { timeMs: 2000, text: 'のらりくらり' }
+    ]
+  };
+
+  let idolUpdate = null;
+  await enricher.enrichLyrics('Idol', 'YOASOBI', idolLyrics, 'en', (update) => {
+    idolUpdate = update;
+  });
+  await new Promise(r => setTimeout(r, 10));
+  assert.ok(idolUpdate);
+  assert.strictEqual(idolUpdate.lines[1].translation, 'Nonchalantly', 'Mimetic adverb のらりくらり must retain translation');
+
   console.log('LyricsEnricher tests passed!');
 }
 

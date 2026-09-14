@@ -65,6 +65,17 @@ function isPhoneticallyIdenticalToRomaji(romaji, translation) {
   return norm(romaji) === norm(translation);
 }
 
+function isVocalicOrRepetitive(text) {
+  if (!text) return false;
+  const words = text
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return false;
+  return words.every(w => VOCALIC_TOKENS.has(w) || /^(la|na|da|oh|ah|ooh|yeah|whoa|mmm|hmm|ha|doo|di|dum|ba|lu|ru)+$/i.test(w));
+}
+
 function isRepetitiveOriginal(orig) {
   if (!orig) return false;
   const clean = (orig || '').replace(/[\s\p{P}\p{S}]/gu, '');
@@ -112,7 +123,7 @@ class LyricsEnricher {
     });
 
     const activeEnabledLangs = Array.isArray(enabledLanguages) ? enabledLanguages : DEFAULT_TRANSLATE_LANGS;
-    const trackKey = `${(title || '').trim()}___${(artist || '').trim()}`;
+    const trackKey = `${(title || '').trim().normalize('NFC').toLowerCase()}___${(artist || '').trim().normalize('NFC').toLowerCase()}`;
     const allText = rawLyrics.lines.map(l => l.text || l.original || '').join(' ');
     const detectedScript = this.transliterationService.detectScript(allText);
     const hasNonLatinLines = rawLyrics.lines.some(l => this.transliterationService.detectScript(l.text || l.original || '') !== 'latin');
@@ -128,25 +139,52 @@ class LyricsEnricher {
       devanagari: 'hi'
     };
 
-    const FOREIGN_LATIN_MARKERS = /\b(de|la|el|en|es|que|un|una|por|con|para|como|tu|su|sin|más|mas|estoy|otra|vez|amor|siento|je|tu|il|elle|nous|vous|ils|elles|et|est|le|les|des|une|dans|pour|alors|danse|pas|qui|mais|avec|tout|sur|und|der|die|das|ich|nicht|ein|eine|mich|dich|hab|nicht|di|ke|yang|ini|itu|dan|dari|aku|kamu|kita|bisa|ada|tidak|sono|sei|della|dello|gli|per|olha|coisa|linda|cheia|graça)\b/i;
-    const FOREIGN_ACCENTS = /[\u00C0-\u024F\u00A1\u00BF]/;
+    const UNAMBIGUOUS_FOREIGN_MARKERS = /\b(estoy|estás|está|estamos|están|otra|vez|siento|quiero|tengo|tienes|tiene|somos|nadie|cuando|tiempo|siempre|corazón|noche|nada|vida|aqui|aquí|haga|puedo|puedes|puede|tenerte|olvidarme|respirar|cuesta|entonces|despacito|cuello|deja|diga|cosas|oído|alors|danse|chante|travail|thunes|nous|vous|ils|elles|dans|pour|avec|cette|aussi|faire|suis|sommes|sont|monde|toujours|rien|jamais|und|der|das|dem|den|des|ich|nicht|nichts|einer|einem|einen|eines|mich|dich|sich|hab|habe|hast|hat|haben|hatte|hatten|wir|ihr|bist|seid|sind|war|waren|gefragt|gesagt|immer|wieder|wenn|aber|durch|ohne|zwischen|olha|olhou|olhar|coisa|linda|cheia|graça|você|vocês|não|muito|tudo|fazer|faço|faz|fez|kukira|bersama|jalan|hati|yang|ini|itu|dari|aku|kamu|kita|bisa|ada|tidak|dengan|untuk|sudah|akan|mereka|kalian|kami|saya|bukan|karena|pada|saat|semua|lagi|bila|sono|siamo|siete|della|dello|delle|degli|questo|questa|questi|queste|quello|quella|quelli|quelle|anche|perché|ancora|niente|eu|ele|ela|eles|elas|meu|minha|meus|minhas|seu|sua|seus|suas|nosso|nossa|dele|dela|deles|delas|pra|pras|pros|pelo|pela|pelos|pelas|num|numa|onde|como|quem|mais|bem|bom|boa|bons|boas|hoje|ontem|amanhã|agora|depois|antes|também|mesmo|mesma|outro|outra|pouco|estou|estão|estava|fico|fica|ficou|tenho|tem|têm|tinha|vou|vai|vão|foi|fui|dar|dou|dá|dão|deu|comer|quis|quiser|quer|quero|sei|sabe|posso|pode|podem|vem|veio|boca|vinho|menino|menina|garoto|garota|yo|tú|él|ella|ellos|ellas|nosotros|usted|ustedes|nuestro|nuestra|pero|más|muy|bueno|buena|después|quién|decir|dice|dijo)\b/i;
+    const UNAMBIGUOUS_FOREIGN_CHARS = /[¿¡ñÑäöüßÄÖÜẞãõçÃÕÇâêôÂÊÔàèùÀÈÙëïîûËÏÎÛœæŒÆ]/;
+    const FRENCH_CONTRACTIONS = /\b(j'|c'|d'|l'|m'|t'|s'|n'|qu')/i;
 
     const DISTINCT_ENGLISH_WORDS = new Set([
       'the', 'and', 'that', 'have', 'for', 'not', 'with', 'you', 'this', 'but', 'his', 'from',
       'they', 'say', 'her', 'she', 'will', 'one', 'all', 'would', 'there', 'their', 'what',
-      'out', 'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time',
+      'out', 'about', 'who', 'get', 'which', 'go', 'when', 'make', 'can', 'like', 'time',
       'just', 'him', 'know', 'take', 'person', 'into', 'year', 'your', 'good', 'some', 'could',
       'them', 'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think',
       'also', 'back', 'after', 'use', 'two', 'how', 'our', 'work', 'first', 'well', 'way', 'even',
       'new', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us', 'wanna', 'gonna', 'gotta',
       'cant', 'dont', 'wont', 'ive', 'im', 'youre', 'theyre', 'hes', 'shes', 'aint', 'baby', 'love',
-      'lately', 'help', 'roads', 'phases', 'speechless', 'complicate', 'rhythm', 'aimless', 'painless'
+      'lately', 'help', 'roads', 'phases', 'speechless', 'complicate', 'rhythm', 'aimless', 'painless',
+      'was', 'my', 'up', 'down', 'too', 'to', 'off', 'on', 'at', 'by', 'dead',
+      'am', 'are', 'is', 'were', 'been', 'had', 'has', 'did', 'does', 'doing', 'done', 'worship',
+      'worshipped', 'ground', 'walk', 'walked', 'ear', 'towel', 'dry', 'dried', 'kill', 'friends',
+      'friend', 'cry', 'beat', 'inside', 'feel', 'alive', 'home', 'shag', 'pity', 'tag', 'shoes',
+      'liked', 'being', 'germs', 'flu', 'chip', 'tooth', 'never', 'always', 'every', 'missing',
+      'bed', 'side', 'tell', 'wait', 'patiently', 'promise', 'honest', 'right', 'wish', 'water',
+      'lost', 'together', 'cold', 'heart', 'i', 'we'
     ]);
 
-    function isSongPurelyEnglish(lines) {
+    function isLineForeign(text) {
+      if (!text) return false;
+      if (UNAMBIGUOUS_FOREIGN_MARKERS.test(text) || UNAMBIGUOUS_FOREIGN_CHARS.test(text) || FRENCH_CONTRACTIONS.test(text)) {
+        return true;
+      }
+      if (/[áéíóúÁÉÍÓÚ]/.test(text)) {
+        const words = text.toLowerCase().replace(/[\p{P}\p{S}]/gu, ' ').split(/\s+/).filter(Boolean);
+        const engMatches = words.filter(w => DISTINCT_ENGLISH_WORDS.has(w));
+        if (engMatches.length < 2) return true;
+      }
+      return false;
+    }
+
+    function isSongPurelyEnglish(lines, songTitle = '', songArtist = '') {
       if (!Array.isArray(lines) || lines.length === 0) return true;
 
+      // Metadata with unambiguous foreign characters or markers indicates a non-pure English track
+      if (isLineForeign(songTitle) || isLineForeign(songArtist)) {
+        return false;
+      }
+
       let englishLineCount = 0;
+      let foreignLineCount = 0;
       let totalMeaningfulLines = 0;
 
       for (const line of lines) {
@@ -154,9 +192,8 @@ class LyricsEnricher {
         if (!text || text.length < 2 || /^[\p{P}\s♪~]+$/u.test(text)) continue;
         totalMeaningfulLines++;
 
-        // If any line has foreign accented characters or non-English Latin stop words, it's NOT purely English
-        if (FOREIGN_ACCENTS.test(text) || FOREIGN_LATIN_MARKERS.test(text)) {
-          return false;
+        if (isLineForeign(text)) {
+          foreignLineCount++;
         }
 
         const words = text.toLowerCase().replace(/[\p{P}\p{S}]/gu, ' ').split(/\s+/).filter(Boolean);
@@ -167,7 +204,18 @@ class LyricsEnricher {
       }
 
       if (totalMeaningfulLines === 0) return true;
-      return (englishLineCount / totalMeaningfulLines) >= 0.35;
+
+      // Purely English only if there is a dominant ratio of distinct English words with zero foreign markers
+      if ((englishLineCount / totalMeaningfulLines) >= 0.40 && foreignLineCount === 0) {
+        return true;
+      }
+
+      // If a longer song has <= 1 isolated foreign token (< 5% of lines) while predominantly English
+      if (totalMeaningfulLines >= 15 && (foreignLineCount / totalMeaningfulLines) <= 0.05 && (englishLineCount / totalMeaningfulLines) >= 0.70) {
+        return true;
+      }
+
+      return false;
     }
 
     let shouldTranslate = true;
@@ -181,7 +229,7 @@ class LyricsEnricher {
       const anyLatinEnabled = ['en', 'es', 'fr', 'de', 'pt', 'it', 'id'].some(l => activeEnabledLangs.includes(l));
       if (!anyLatinEnabled) {
         shouldTranslate = false;
-      } else if (targetLang.toLowerCase() === 'en' && isSongPurelyEnglish(rawLyrics.lines)) {
+      } else if (targetLang.toLowerCase() === 'en' && isSongPurelyEnglish(rawLyrics.lines, title, artist)) {
         shouldTranslate = false;
       }
     }
@@ -189,84 +237,119 @@ class LyricsEnricher {
     // Step 1: Fast Transliteration (<15ms)
     const transliteratedLines = await this.transliterationService.transliterateLyrics(rawLyrics.lines, detectedScript);
 
-    const initialLines = transliteratedLines.map(l => ({
-      timeMs: l.timeMs,
-      original: l.original,
-      romaji: l.romaji,
-      translation: ''
-    }));
+    const norm = (s) => (s || '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
 
-    // Step 2: Asynchronous Translation
-    if (shouldTranslate) {
-      this.translationService.translateLyrics({
-        trackKey,
-        lines: rawLyrics.lines,
-        targetLang
-      }).then(translatedLines => {
-        if (Array.isArray(translatedLines)) {
-          translatedLines.forEach((t, idx) => {
-            if (initialLines[idx]) {
-              const origText = (initialLines[idx].original || '').trim();
-              const cleanTranslation = (t.translation || '').trim();
+    const initialLines = transliteratedLines.map(l => {
+      const origText = l.original || '';
+      let romajiText = l.romaji || '';
+      if (romajiText && norm(normalizeHomoglyphs(romajiText)) === norm(normalizeHomoglyphs(origText))) {
+        romajiText = '';
+      }
+      return {
+        timeMs: l.timeMs,
+        original: origText,
+        romaji: romajiText,
+        translation: ''
+      };
+    });
 
-              const norm = (s) => (s || '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
-              const isSame = norm(cleanTranslation) === norm(origText);
+    const applyTranslations = (translatedLines) => {
+      if (!Array.isArray(translatedLines)) return;
+      translatedLines.forEach((t, idx) => {
+        if (initialLines[idx]) {
+          const origText = (initialLines[idx].original || '').trim();
+          const cleanTranslation = (t.translation || '').trim();
 
-              const lineDetected = (t.detectedLang || '').toLowerCase();
-              const isTargetLanguage = isSameLanguage(lineDetected, targetLang);
+          const isSame = norm(normalizeHomoglyphs(cleanTranslation)) === norm(normalizeHomoglyphs(origText));
 
-              let isLangPermitted = false;
-              if (Array.isArray(activeEnabledLangs) && lineDetected) {
-                isLangPermitted = activeEnabledLangs.some(l => {
-                  if (l === 'id' && (lineDetected === 'id' || lineDetected === 'ms')) return true;
-                  return lineDetected === l || lineDetected.startsWith(l + '-');
-                });
-              } else if (!lineDetected) {
-                isLangPermitted = !isSame;
-              }
+          const lineDetected = (t.detectedLang || '').toLowerCase();
+          const isTargetLanguage = isSameLanguage(lineDetected, targetLang);
 
-              // Suppress duplicate, empty, disabled, or target-language lines
-              if (isSame || !cleanTranslation || !isLangPermitted || (isTargetLanguage && !t.isPartiallyForeign)) {
-                initialLines[idx].translation = '';
-                t.translation = '';
-              } else {
-                const romaji = (initialLines[idx].romaji || '').trim();
-                const hasRomaji = Boolean(romaji && romaji !== origText);
+          let isLangPermitted = false;
+          if (Array.isArray(activeEnabledLangs) && lineDetected) {
+            isLangPermitted = activeEnabledLangs.some(l => {
+              if (l === 'id' && (lineDetected === 'id' || lineDetected === 'ms')) return true;
+              return lineDetected === l || lineDetected.startsWith(l + '-');
+            });
+          } else if (!lineDetected) {
+            isLangPermitted = !isSame;
+          }
 
-                // Check vocalization suppression & repetition collapsing
-                if (hasRomaji && (
-                  isRepetitiveOriginal(origText) ||
-                  isRepetitiveVocalization(cleanTranslation) ||
-                  isPhoneticallyIdenticalToRomaji(romaji, cleanTranslation)
-                )) {
-                  initialLines[idx].translation = '';
-                  t.translation = '';
-                } else {
-                  const collapsed = collapseRepetition(cleanTranslation);
-                  initialLines[idx].translation = collapsed;
-                  t.translation = collapsed;
-                }
-              }
+          // If individual line detected an obscure dialect, but the song's primary language is permitted
+          const songPrimaryLang = (translatedLines.detectedLang || '').toLowerCase();
+          if (!isLangPermitted && songPrimaryLang && activeEnabledLangs.includes(songPrimaryLang) && !isTargetLanguage && !isSame) {
+            isLangPermitted = true;
+          }
+
+          // Suppress duplicate, empty, disabled, or target-language lines
+          if (isSame || !cleanTranslation || !isLangPermitted || (isTargetLanguage && !t.isPartiallyForeign)) {
+            initialLines[idx].translation = '';
+            t.translation = '';
+          } else {
+            const romaji = (initialLines[idx].romaji || '').trim();
+            const hasRomaji = Boolean(romaji && romaji !== origText);
+
+            // Check vocalization suppression & repetition collapsing
+            const isVocalic = isRepetitiveOriginal(origText) ||
+              isRepetitiveVocalization(cleanTranslation) ||
+              (isVocalicOrRepetitive(cleanTranslation) && isPhoneticallyIdenticalToRomaji(romaji, cleanTranslation));
+
+            if (hasRomaji && isVocalic) {
+              initialLines[idx].translation = '';
+              t.translation = '';
+            } else {
+              const collapsed = collapseRepetition(cleanTranslation);
+              initialLines[idx].translation = collapsed;
+              t.translation = collapsed;
             }
-          });
-        }
-        if (typeof onTranslationReady === 'function') {
-          onTranslationReady({
-            trackKey,
-            isTranslating: false,
-            lines: initialLines.map(l => ({ timeMs: l.timeMs, translation: l.translation }))
-          });
-        }
-      }).catch(err => {
-        console.error('Async translation error:', err);
-        if (typeof onTranslationReady === 'function') {
-          onTranslationReady({
-            trackKey,
-            isTranslating: false,
-            lines: initialLines.map(l => ({ timeMs: l.timeMs, translation: '' }))
-          });
+          }
         }
       });
+    };
+
+    let isTranslating = false;
+
+    // Step 2: Translation (Fast path for cache, async for network)
+    if (shouldTranslate) {
+      const cachedTranslations = this.translationService.getCachedTranslation(trackKey, targetLang, rawLyrics.lines.length);
+      if (cachedTranslations) {
+        applyTranslations(cachedTranslations);
+        isTranslating = false;
+        if (typeof onTranslationReady === 'function') {
+          setTimeout(() => {
+            onTranslationReady({
+              trackKey,
+              isTranslating: false,
+              lines: initialLines.map(l => ({ timeMs: l.timeMs, translation: l.translation }))
+            });
+          }, 0);
+        }
+      } else {
+        isTranslating = true;
+        this.translationService.translateLyrics({
+          trackKey,
+          lines: rawLyrics.lines,
+          targetLang
+        }).then(translatedLines => {
+          applyTranslations(translatedLines);
+          if (typeof onTranslationReady === 'function') {
+            onTranslationReady({
+              trackKey,
+              isTranslating: false,
+              lines: initialLines.map(l => ({ timeMs: l.timeMs, translation: l.translation }))
+            });
+          }
+        }).catch(err => {
+          console.error('Async translation error:', err);
+          if (typeof onTranslationReady === 'function') {
+            onTranslationReady({
+              trackKey,
+              isTranslating: false,
+              lines: initialLines.map(l => ({ timeMs: l.timeMs, translation: '' }))
+            });
+          }
+        });
+      }
     } else if (typeof onTranslationReady === 'function') {
       setTimeout(() => {
         onTranslationReady({
@@ -285,7 +368,7 @@ class LyricsEnricher {
       synced: rawLyrics.synced,
       isForeign,
       detectedScript,
-      isTranslating: shouldTranslate,
+      isTranslating,
       targetLang,
       provider: rawLyrics.provider || { name: 'LRCLIB', url: 'https://lrclib.net' },
       lines: initialLines
@@ -297,6 +380,7 @@ module.exports = {
   LyricsEnricher,
   isRepetitiveVocalization,
   isPhoneticallyIdenticalToRomaji,
+  isVocalicOrRepetitive,
   isRepetitiveOriginal,
   collapseRepetition
 };
