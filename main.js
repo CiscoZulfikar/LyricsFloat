@@ -1,5 +1,11 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 
+if (process.platform === 'win32') {
+  try {
+    require('child_process').execSync('chcp 65001', { stdio: 'inherit' });
+  } catch {}
+}
+
 const path = require('path');
 const { ConfigStore } = require('./services/config-store');
 const { LyricsService } = require('./services/lyrics-service');
@@ -91,12 +97,9 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     applyNativeBlur(mainWindow, 90);
-    if (lastPlaybackState && mainWindow) {
-      mainWindow.webContents.send('playback-state', lastPlaybackState);
-    }
-    if (lastEnrichedLyrics && mainWindow) {
-      mainWindow.webContents.send('lyrics-loaded', lastEnrichedLyrics);
-    }
+    // NOTE: Do NOT replay lastPlaybackState / lastEnrichedLyrics here.
+    // The renderer fetches the same data via getCurrentState() in DOMContentLoaded,
+    // and re-sending creates duplicate "loading lyrics" / translation pill races.
   });
 
 
@@ -122,14 +125,40 @@ function normalizeTrackKey(title, artist) {
   }
   const t = (title || '').trim().normalize('NFC').toLowerCase();
   const a = (artist || '').trim().normalize('NFC').toLowerCase();
-  return `${t}___${a}`;
+  const primaryArtist = a.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
+  return `${t}___${primaryArtist}`;
 }
 
 let trackChangeCounter = 0;
+let retryTimeout = null;
+
+function scheduleLyricsRetry(track, originalRequestId) {
+  if (retryTimeout) clearTimeout(retryTimeout);
+  retryTimeout = setTimeout(async () => {
+    retryTimeout = null;
+    const trackKey = normalizeTrackKey(track.title, track.artist);
+    if (originalRequestId === trackChangeCounter && currentTrackKey === trackKey) {
+      if (!currentRawLyrics || !lastEnrichedLyrics || lastEnrichedLyrics.lines.length === 0) {
+        console.log(`[MediaWatcher] Auto-retrying lyrics fetch for: ${track.title} by ${track.artist}`);
+        lyricsService.clearCache(track.title, track.artist);
+        handleTrackChange(track);
+      }
+    }
+  }, 3500);
+}
 
 async function handleTrackChange(track) {
   const requestId = ++trackChangeCounter;
-  currentTrack = { title: track.title, artist: track.artist, album: track.album };
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+    retryTimeout = null;
+  }
+  currentTrack = { 
+    title: track.title, 
+    artist: track.artist, 
+    album: track.album,
+    durationMs: track.durationMs 
+  };
   const trackKey = normalizeTrackKey(track.title, track.artist);
   currentTrackKey = trackKey;
   const targetLang = configStore.get('targetLanguage', 'en');
@@ -154,6 +183,12 @@ async function handleTrackChange(track) {
 
     const coverUrl = metadata ? metadata.coverUrl : null;
     let isExplicit = metadata ? Boolean(metadata.isExplicit) : false;
+    const albumName = track.album || (metadata ? metadata.album : '') || (rawLyrics ? rawLyrics.album : '') || '';
+    const fullArtist = (metadata && metadata.artist) || track.artist;
+
+    if (currentTrack && normalizeTrackKey(currentTrack.title, currentTrack.artist) === trackKey) {
+      currentTrack.artist = fullArtist;
+    }
 
     // Secondary explicitness detection
     if (!isExplicit) {
@@ -173,6 +208,8 @@ async function handleTrackChange(track) {
     if (lastPlaybackState && normalizeTrackKey(lastPlaybackState.title, lastPlaybackState.artist) === trackKey) {
       lastPlaybackState.coverUrl = coverUrl;
       lastPlaybackState.isExplicit = isExplicit;
+      lastPlaybackState.album = albumName;
+      lastPlaybackState.artist = fullArtist;
       if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send('playback-state', lastPlaybackState);
       }
@@ -181,8 +218,8 @@ async function handleTrackChange(track) {
     if (!rawLyrics) {
       lastEnrichedLyrics = {
         title: track.title,
-        artist: track.artist,
-        album: track.album,
+        artist: fullArtist,
+        album: albumName,
         coverUrl,
         isExplicit,
         synced: false,
@@ -192,6 +229,8 @@ async function handleTrackChange(track) {
       if (mainWindow && mainWindow.webContents && requestId === trackChangeCounter) {
         mainWindow.webContents.send('lyrics-loaded', lastEnrichedLyrics);
       }
+      // Auto-retry in background after 3.5s in case of transient network / 503 issue
+      scheduleLyricsRetry(track, requestId);
       return;
     }
 
@@ -230,6 +269,8 @@ async function handleTrackChange(track) {
 
     enriched.coverUrl = coverUrl;
     enriched.isExplicit = isExplicit;
+    enriched.album = albumName || enriched.album || '';
+    enriched.artist = fullArtist;
     if (enriched.lines && enriched.lines.some(l => l.translation && l.translation.trim().length > 0)) {
       enriched.isTranslating = false;
     }
@@ -244,8 +285,8 @@ async function handleTrackChange(track) {
     if (mainWindow && mainWindow.webContents && requestId === trackChangeCounter) {
       lastEnrichedLyrics = {
         title: track.title,
-        artist: track.artist,
-        album: track.album,
+        artist: (currentTrack && currentTrack.artist) || track.artist,
+        album: track.album || '',
         coverUrl: null,
         isExplicit: false,
         synced: false,
@@ -263,11 +304,34 @@ app.whenReady().then(async () => {
   createWindow();
 
   mediaWatcher.on('track-change', (track) => {
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('track-changing', {
+        title: track.title,
+        artist: track.artist,
+        album: track.album || ''
+      });
+    }
     handleTrackChange(track);
   });
 
   mediaWatcher.on('playback-state', (state) => {
     const stateKey = normalizeTrackKey(state.title, state.artist);
+
+    // Inherit enriched full artist credits if available
+    if (currentTrack && normalizeTrackKey(currentTrack.title, currentTrack.artist) === stateKey) {
+      if (currentTrack.artist) {
+        state.artist = currentTrack.artist;
+      }
+    } else if (lastPlaybackState && normalizeTrackKey(lastPlaybackState.title, lastPlaybackState.artist) === stateKey) {
+      if (lastPlaybackState.artist) {
+        state.artist = lastPlaybackState.artist;
+      }
+    } else if (lastEnrichedLyrics && normalizeTrackKey(lastEnrichedLyrics.title, lastEnrichedLyrics.artist) === stateKey) {
+      if (lastEnrichedLyrics.artist) {
+        state.artist = lastEnrichedLyrics.artist;
+      }
+    }
+
     if (lastPlaybackState && lastPlaybackState.coverUrl && normalizeTrackKey(lastPlaybackState.title, lastPlaybackState.artist) === stateKey) {
       state.coverUrl = lastPlaybackState.coverUrl;
     } else if (lastEnrichedLyrics && lastEnrichedLyrics.coverUrl && normalizeTrackKey(lastEnrichedLyrics.title, lastEnrichedLyrics.artist) === stateKey) {
@@ -277,6 +341,13 @@ app.whenReady().then(async () => {
       state.isExplicit = lastPlaybackState.isExplicit;
     } else if (lastEnrichedLyrics && lastEnrichedLyrics.isExplicit !== undefined && normalizeTrackKey(lastEnrichedLyrics.title, lastEnrichedLyrics.artist) === stateKey) {
       state.isExplicit = lastEnrichedLyrics.isExplicit;
+    }
+    if (!state.album) {
+      if (lastPlaybackState && lastPlaybackState.album && normalizeTrackKey(lastPlaybackState.title, lastPlaybackState.artist) === stateKey) {
+        state.album = lastPlaybackState.album;
+      } else if (lastEnrichedLyrics && lastEnrichedLyrics.album && normalizeTrackKey(lastEnrichedLyrics.title, lastEnrichedLyrics.artist) === stateKey) {
+        state.album = lastEnrichedLyrics.album;
+      }
     }
     lastPlaybackState = state;
     if (mainWindow && mainWindow.webContents) {
@@ -385,6 +456,16 @@ ipcMain.handle('open-external', (_event, url) => {
   if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
     shell.openExternal(url);
   }
+});
+
+ipcMain.handle('retry-lyrics', async () => {
+  if (currentTrack && currentTrack.title) {
+    console.log(`[MediaWatcher] Manual retry triggered for: ${currentTrack.title} by ${currentTrack.artist}`);
+    lyricsService.clearCache(currentTrack.title, currentTrack.artist);
+    handleTrackChange(currentTrack);
+    return true;
+  }
+  return false;
 });
 
 

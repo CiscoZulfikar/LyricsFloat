@@ -30,6 +30,7 @@ class PlaybackController {
     this.btnJumpActive = btnJumpActive || document.getElementById('btn-jump-active');
 
     this.currentDurationMs = 0;
+    this.currentPositionMs = 0;
     this.isScrubbing = false;
 
     this.bindEvents();
@@ -113,6 +114,9 @@ class PlaybackController {
     if (this.btnPrev) {
       this.btnPrev.addEventListener('click', () => {
         this.btnPrev.blur();
+        if (typeof this.onTrackChangeRequested === 'function') {
+          this.onTrackChangeRequested('previous');
+        }
         if (window.lyricsFloatAPI && window.lyricsFloatAPI.controlPlayback) {
           window.lyricsFloatAPI.controlPlayback('previous');
         }
@@ -122,6 +126,9 @@ class PlaybackController {
     if (this.btnNext) {
       this.btnNext.addEventListener('click', () => {
         this.btnNext.blur();
+        if (typeof this.onTrackChangeRequested === 'function') {
+          this.onTrackChangeRequested('next');
+        }
         if (window.lyricsFloatAPI && window.lyricsFloatAPI.controlPlayback) {
           window.lyricsFloatAPI.controlPlayback('next');
         }
@@ -212,6 +219,10 @@ class PlaybackController {
       if (this.trackProgressBar) {
         this.trackProgressBar.style.width = `${pct}%`;
       }
+    }
+
+    if (state.positionMs !== undefined && state.positionMs >= 0) {
+      this.currentPositionMs = state.positionMs;
     }
 
     if (this.timeCurrent && state.positionMs >= 0) {

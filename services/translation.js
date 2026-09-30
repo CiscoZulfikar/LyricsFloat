@@ -474,18 +474,29 @@ class TranslationService {
 
       // Find primary foreign detected language from valid standard languages
       const standardLangs = ['ja', 'ko', 'zh', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'id', 'el', 'hi', 'ar'];
+      const getBaseLang = (lang) => (lang || '').toLowerCase().split('-')[0].trim();
+      const isRecognizedLang = (lang) => {
+        const base = getBaseLang(lang);
+        return base === 'en' || standardLangs.includes(base);
+      };
+
       let primaryForeignLang = '';
       for (const item of textMap.values()) {
-        if (item && item.detectedLang && item.detectedLang !== targetLang.toLowerCase() && standardLangs.includes(item.detectedLang)) {
-          primaryForeignLang = item.detectedLang;
+        const base = getBaseLang(item && item.detectedLang);
+        if (base && base !== targetLang.toLowerCase() && standardLangs.includes(base)) {
+          primaryForeignLang = base;
           break;
         }
       }
 
       // If a track has a primary foreign language, re-translate any lines that hallucinated obscure language codes (e.g. 'zap', 'la')
       if (primaryForeignLang) {
-        const obscureEntries = Array.from(textMap.entries()).filter(([_, item]) => {
-          return item && item.detectedLang && !['en', ...standardLangs].includes(item.detectedLang);
+        const obscureEntries = Array.from(textMap.entries()).filter(([raw, item]) => {
+          if (!item || !item.detectedLang) return false;
+          if (isRecognizedLang(item.detectedLang)) return false;
+          // If the line has CJK characters, don't re-translate with a Latin primaryForeignLang or mismatched script
+          if (CJK_REGEX.test(raw) && !['ja', 'ko', 'zh'].includes(primaryForeignLang)) return false;
+          return true;
         });
 
         if (obscureEntries.length > 0) {

@@ -51,6 +51,8 @@ class LyricsSyncEngine {
           // After scrolling stops, return camera back to active singing line
           if (this.activeIndex >= 0) {
             this.scrollToIndex(this.activeIndex, false);
+          } else {
+            this.targetScrollTop = 0;
           }
         }, 2500);
         setTimeout(() => this.notifyScrollDrift(), 35);
@@ -110,6 +112,8 @@ class LyricsSyncEngine {
     }
     if (this.activeIndex >= 0) {
       this.scrollToIndex(this.activeIndex, false);
+    } else {
+      this.targetScrollTop = 0;
     }
   }
 
@@ -119,27 +123,48 @@ class LyricsSyncEngine {
       this.loadingWatchdogTimeout = null;
     }
     this.lines = [];
+    this.pendingTranslations = null;
     this.activeIndex = -1;
     this.targetScrollTop = 0;
     this.isUserScrolling = false;
     if (this.onScrollDrift) this.onScrollDrift(true, 'down');
-    if (this.container) {
+
+    const isAlreadyLoading = this.container &&
+      this.container.innerHTML &&
+      this.container.innerHTML.includes('lyrics-loading-state');
+
+    if (!isAlreadyLoading && this.container) {
       this.container.scrollTop = 0;
       this.container.innerHTML = `
         <div class="lyrics-idle-message lyrics-loading-state">
           <div class="idle-pulse-ring"></div>
           <span>Loading lyrics...</span>
         </div>`;
+      if (this.container.classList) {
+        this.container.classList.remove('lyrics-loaded-enter', 'lyrics-track-switching', 'lyrics-loading-enter', 'lyrics-fade-exit');
+        void this.container.offsetWidth;
+        this.container.classList.add('lyrics-loading-enter');
+      }
     }
 
     if (timeoutMs > 0) {
       this.loadingWatchdogTimeout = setTimeout(() => {
         if (this.lines.length === 0 && this.container) {
-          this.container.innerHTML = `
-            <div class="lyrics-idle-message">
-              <div class="idle-pulse-ring"></div>
-              <span>Lyrics unavailable for this track</span>
-            </div>`;
+          const isAlreadyUnavailable = this.container.innerHTML &&
+            this.container.innerHTML.includes('Lyrics unavailable for this track') &&
+            !this.container.innerHTML.includes('lyrics-loading-state');
+          if (!isAlreadyUnavailable) {
+            this.container.innerHTML = `
+              <div class="lyrics-idle-message">
+                <div class="idle-pulse-ring"></div>
+                <span>Lyrics unavailable for this track</span>
+              </div>`;
+            if (this.container.classList) {
+              this.container.classList.remove('lyrics-loaded-enter', 'lyrics-track-switching', 'lyrics-loading-enter', 'lyrics-fade-exit');
+              void this.container.offsetWidth;
+              this.container.classList.add('lyrics-loading-enter');
+            }
+          }
         }
         this.loadingWatchdogTimeout = null;
       }, timeoutMs);
@@ -159,23 +184,58 @@ class LyricsSyncEngine {
       clearTimeout(this.loadingWatchdogTimeout);
       this.loadingWatchdogTimeout = null;
     }
+
+    const newLines = (enrichedData && enrichedData.lines) || [];
+
+    // If pending translations arrived before loadLyrics ran, apply them immediately
+    if (this.pendingTranslations && Array.isArray(this.pendingTranslations.lines)) {
+      this.pendingTranslations.lines.forEach((t, idx) => {
+        if (newLines[idx] && t.translation && !newLines[idx].translation) {
+          newLines[idx].translation = t.translation;
+        }
+      });
+      this.pendingTranslations = null;
+    }
+
+    if (newLines.length === 0) {
+      this.lines = [];
+      this.activeIndex = -1;
+      this.targetScrollTop = 0;
+      this.isUserScrolling = false;
+      if (this.onScrollDrift) this.onScrollDrift(true, 'down');
+
+      const isAlreadyUnavailable = this.container &&
+        this.container.innerHTML &&
+        this.container.innerHTML.includes('Lyrics unavailable for this track') &&
+        !this.container.innerHTML.includes('lyrics-loading-state');
+
+      if (isAlreadyUnavailable) {
+        return;
+      }
+
+      if (this.container) {
+        this.container.scrollTop = 0;
+        this.container.innerHTML = `
+          <div class="lyrics-idle-message">
+            <div class="idle-pulse-ring"></div>
+            <span>Lyrics unavailable for this track</span>
+          </div>`;
+        if (this.container.classList) {
+          this.container.classList.remove('lyrics-loaded-enter', 'lyrics-track-switching', 'lyrics-loading-enter', 'lyrics-fade-exit');
+          void this.container.offsetWidth;
+          this.container.classList.add('lyrics-loading-enter');
+        }
+      }
+      return;
+    }
+
     this.container.innerHTML = '';
-    this.lines = (enrichedData && enrichedData.lines) || [];
+    this.lines = newLines;
     this.activeIndex = -1;
     this.targetScrollTop = 0;
     this.isUserScrolling = false;
     if (this.onScrollDrift) this.onScrollDrift(true, 'down');
     if (this.container) this.container.scrollTop = 0;
-
-
-    if (this.lines.length === 0) {
-      this.container.innerHTML = `
-        <div class="lyrics-idle-message">
-          <div class="idle-pulse-ring"></div>
-          <span>Lyrics unavailable for this track</span>
-        </div>`;
-      return;
-    }
 
     const fragment = document.createDocumentFragment();
     this.lines.forEach((line, idx) => {
@@ -236,6 +296,12 @@ class LyricsSyncEngine {
 
     this.container.appendChild(fragment);
 
+    if (this.container && this.container.classList) {
+      this.container.classList.remove('lyrics-loading-enter', 'lyrics-track-switching', 'lyrics-loaded-enter', 'lyrics-fade-exit');
+      void this.container.offsetWidth;
+      this.container.classList.add('lyrics-loaded-enter');
+    }
+
     // If opening mid-song, immediately jump to current line
     if (this.lines.length > 0 && this.lastPositionMs > 0) {
       let currentMs = this.lastPositionMs;
@@ -253,6 +319,8 @@ class LyricsSyncEngine {
 
   updateTranslations(translationPayload) {
     if (!translationPayload || !Array.isArray(translationPayload.lines)) return;
+
+    this.pendingTranslations = translationPayload;
 
     translationPayload.lines.forEach((t, idx) => {
       const origText = (this.lines[idx] && (this.lines[idx].original || this.lines[idx].text)) || '';
@@ -379,7 +447,7 @@ class LyricsSyncEngine {
 
     if (this.lines.length === 0) return;
 
-    let targetIndex = 0;
+    let targetIndex = -1;
     for (let i = 0; i < this.lines.length; i++) {
       if (targetMs >= this.lines[i].timeMs) {
         targetIndex = i;
@@ -392,11 +460,18 @@ class LyricsSyncEngine {
       const prev = this.container.querySelector('.lyric-line.active');
       if (prev) prev.classList.remove('active');
       this.activeIndex = targetIndex;
-      const current = this.container.querySelector(`.lyric-line[data-index="${targetIndex}"]`);
-      if (current) {
-        current.classList.add('active');
-        // While scrubbing, scroll immediately and directly to follow mouse with zero lag/jitter
-        this.scrollToElement(current, true);
+      if (targetIndex >= 0) {
+        const current = this.container.querySelector(`.lyric-line[data-index="${targetIndex}"]`);
+        if (current) {
+          current.classList.add('active');
+          // While scrubbing, scroll immediately and directly to follow mouse with zero lag/jitter
+          this.scrollToElement(current, true);
+        }
+      } else {
+        this.targetScrollTop = 0;
+        if (this.container) {
+          this.container.scrollTop = 0;
+        }
       }
       if (this.onScrollDrift) this.onScrollDrift(true, 'down');
     }
@@ -417,7 +492,7 @@ class LyricsSyncEngine {
     if (this.isScrubbing || this.lines.length === 0) return;
 
     // Find the current active line based on timestamp
-    let targetIndex = 0;
+    let targetIndex = -1;
     for (let i = 0; i < this.lines.length; i++) {
       if (currentMs >= this.lines[i].timeMs) {
         targetIndex = i;
@@ -441,8 +516,10 @@ class LyricsSyncEngine {
         this.activeIndex = targetIndex;
         const prev = this.container.querySelector('.lyric-line.active');
         if (prev) prev.classList.remove('active');
-        const current = this.container.querySelector(`.lyric-line[data-index="${targetIndex}"]`);
-        if (current) current.classList.add('active');
+        if (targetIndex >= 0) {
+          const current = this.container.querySelector(`.lyric-line[data-index="${targetIndex}"]`);
+          if (current) current.classList.add('active');
+        }
         this.notifyScrollDrift();
         return;
       }
@@ -471,10 +548,14 @@ class LyricsSyncEngine {
     if (prev) prev.classList.remove('active');
 
     this.activeIndex = index;
-    const current = this.container.querySelector(`.lyric-line[data-index="${index}"]`);
-    if (current) {
-      current.classList.add('active');
-      this.scrollToElement(current);
+    if (index >= 0) {
+      const current = this.container.querySelector(`.lyric-line[data-index="${index}"]`);
+      if (current) {
+        current.classList.add('active');
+        this.scrollToElement(current);
+      }
+    } else {
+      this.targetScrollTop = 0;
     }
   }
 

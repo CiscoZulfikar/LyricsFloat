@@ -2,6 +2,37 @@ const { exec } = require('child_process');
 const EventEmitter = require('events');
 const path = require('path');
 
+const CP437_CHARS = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■\u00a0';
+const CP437_BYTE_MAP = {};
+for (let i = 0; i < CP437_CHARS.length; i++) {
+  CP437_BYTE_MAP[CP437_CHARS[i]] = 0x80 + i;
+}
+
+function fixCP437Mojibake(str) {
+  if (!str || typeof str !== 'string') return str;
+  // If string contains box-drawing or symbols characteristic of CP437-decoded UTF-8:
+  if (!/[│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌░▒▓σµτΦΘΩδ∞φε]/.test(str)) {
+    return str;
+  }
+  try {
+    const bytes = [];
+    for (const ch of str) {
+      if (CP437_BYTE_MAP[ch] !== undefined) {
+        bytes.push(CP437_BYTE_MAP[ch]);
+      } else {
+        const code = ch.charCodeAt(0);
+        if (code < 128) bytes.push(code);
+        else return str;
+      }
+    }
+    const decoded = Buffer.from(bytes).toString('utf8');
+    if (!decoded.includes('\ufffd') && /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(decoded)) {
+      return decoded;
+    }
+  } catch (e) {}
+  return str;
+}
+
 class MediaWatcher extends EventEmitter {
   constructor(pollIntervalMs = 800) {
     super();
@@ -33,6 +64,7 @@ class MediaWatcher extends EventEmitter {
       this.emit('playback-state', {
         title: this.currentTrack.Title,
         artist: this.currentTrack.Artist,
+        album: this.currentTrack.Album || '',
         positionMs: this.currentTrack.PositionMs || 0,
         durationMs: this.currentTrack.DurationMs || 0,
         isPlaying: Boolean(this.currentTrack.IsPlaying)
@@ -73,6 +105,7 @@ class MediaWatcher extends EventEmitter {
           this.emit('playback-state', {
             title: this.currentTrack.Title,
             artist: this.currentTrack.Artist,
+            album: this.currentTrack.Album || '',
             positionMs: target,
             durationMs: this.currentTrack.DurationMs || 0,
             isPlaying: Boolean(this.currentTrack.IsPlaying)
@@ -111,6 +144,10 @@ class MediaWatcher extends EventEmitter {
       try {
         const data = JSON.parse(stdout.trim());
         if (data && data.Title) {
+          data.Title = fixCP437Mojibake(data.Title);
+          data.Artist = fixCP437Mojibake(data.Artist);
+          data.Album = fixCP437Mojibake(data.Album || '');
+
           const trackChanged = !this.currentTrack || 
             this.currentTrack.Title !== data.Title || 
             this.currentTrack.Artist !== data.Artist;
@@ -137,6 +174,7 @@ class MediaWatcher extends EventEmitter {
           this.emit('playback-state', {
             title: data.Title,
             artist: data.Artist,
+            album: data.Album || '',
             positionMs: data.PositionMs || 0,
             durationMs: data.DurationMs || 0,
             isPlaying: Boolean(data.IsPlaying)
@@ -149,4 +187,4 @@ class MediaWatcher extends EventEmitter {
   }
 }
 
-module.exports = { MediaWatcher };
+module.exports = { MediaWatcher, fixCP437Mojibake };

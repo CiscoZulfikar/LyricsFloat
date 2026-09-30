@@ -264,7 +264,7 @@
               <div class="about-info">
                 <div class="about-header-row">
                   <span class="about-app-title">LyricsFloat</span>
-                  <span class="about-badge">v1.2.0 (260914)</span>
+                  <span class="about-badge">v1.2.1 (260917)</span>
                 </div>
                 <span class="about-creator">Made by: <strong>ciszu</strong></span>
               </div>
@@ -289,10 +289,26 @@
   </div>
 
   <!-- Full-Size Artwork Preview Modal -->
-  <div id="artwork-modal" class="artwork-modal-backdrop hidden" title="Click anywhere to close">
+  <div id="artwork-modal" class="artwork-modal-backdrop hidden">
     <button id="btn-close-artwork" class="artwork-modal-close-btn" title="Close preview">&times;</button>
     <div class="artwork-modal-container">
       <img id="artwork-modal-img" class="artwork-modal-img" src="" alt="Album Artwork Preview">
+      <div id="artwork-modal-meta" class="artwork-modal-meta">
+        <div class="artwork-modal-album-container">
+          <div id="artwork-modal-album-wrapper" class="artwork-modal-album-wrapper">
+            <span id="artwork-modal-album-badge-explicit" class="badge-explicit hidden" title="Explicit">E</span>
+            <span id="artwork-modal-album" class="artwork-modal-album" title=""></span>
+          </div>
+        </div>
+        <div class="artwork-modal-track-container">
+          <div id="artwork-modal-track" class="artwork-modal-track" title="">
+            <span id="artwork-modal-badge-explicit" class="badge-explicit hidden" title="Explicit">E</span>
+            <span id="artwork-modal-title" class="artwork-modal-title"></span>
+            <span id="artwork-modal-divider" class="artwork-modal-divider">•</span>
+            <span id="artwork-modal-artist" class="artwork-modal-artist"></span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

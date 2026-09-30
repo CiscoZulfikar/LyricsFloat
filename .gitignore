@@ -25,3 +25,8 @@ test/*-temp/
 test/*cache*/
 scratch/
 
+# Personal & Local Todo
+TODO.md
+todo.md
+
+

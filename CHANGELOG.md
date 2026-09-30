@@ -6,6 +6,35 @@ All notable changes to LyricsFloat will be documented in this file.
 
 ## Version 1.2
 
+### [1.2.1] - 2026-09-30 (`260930`)
+
+#### ✨ What's New
+- **Japanese "o" vs "wo" Distinction:** Romanization now clearly differentiates between the grammatical particle `を`/`ヲ` (romanized as `wo`) and standard vowels `お`/`オ` (romanized as `o`) for natural singing and pronunciation.
+- **Native Script Prioritization:** Lyrics retrieval now actively prioritizes authentic Japanese Kanji/Kana lyrics with accurate line timings over community-uploaded Romaji text.
+- **Smooth Lyrics State Crossfade:** Added subtle, fluid fade animations when transitioning between the loading state and loaded lyrics, as well as an elegant dissolve-out when switching songs.
+- **Trilingual & Multilingual Support:** Songs with 3 or more languages and mixed scripts (such as English, Korean, and Chinese in *"MORE"* by K/DA) now fully support synchronized translations and romanization side-by-side.
+- **Trilingual Test Suite:** Added automated integration tests covering multilingual songs with mixed Korean, Chinese, and English verses.
+
+#### 🛠️ What's Been Modified
+- **Refined Artwork Modal Dismissal:** Removed the "Click anywhere to close" tooltip; clicking on the artwork card no longer dismisses the modal, while backdrop clicks, the close button, and the `Escape` key cleanly close it.
+- **Smarter Regional Language Detection:** Regional language codes (like `zh-cn`, `zh-tw`, `es-419`, `pt-br`) are now matched by their base language, preventing dialect lines from being rejected as unrecognized codes.
+- **Script-Aware Language Guard:** Fallback re-translations now check script types to prevent forcing mismatched languages (e.g. treating Chinese characters as Korean).
+
+#### 🐛 What's Been Fixed
+- **Full-Size Artwork Modal Marquee Scrolling:** Fixed overflowing album titles (such as *Anime "Attack on Titan" Original Soundtrack*) getting clipped on the right without scrolling inside the full-size artwork modal by properly binding the wrapper element to its overflow container and ensuring `flex-shrink: 0`.
+- **"Lyrics Unavailable" Flickering & Animation Glitch:** Fixed an issue where the *"Lyrics unavailable for this track"* message and pulse ring flickered and re-rendered every 800ms due to playback state polling re-triggering entrance animations on tracks with empty lyrics.
+- **Startup Lyrics Fetch Resilience & Auto-Retry:** Separated exact LRCLIB lookup and search into isolated stages with an increased 7-second timeout and automatic 3.5s background retry. Tracks playing when LyricsFloat launches no longer get stuck permanently on *"Lyrics unavailable"* due to transient startup network lag or upstream 503 errors.
+- **Click-to-Retry Unavailable Lyrics:** Made the *"Lyrics unavailable"* message interactively clickable with subtle hover feedback so users can instantly re-trigger lyrics retrieval anytime without restarting the app.
+- **Startup IPC Race Condition:** Moved renderer IPC event subscriptions prior to initial state retrieval, ensuring events emitted during window startup are never dropped.
+- **Rewind & Replay Lyrics Retention:** Fixed clicking the Previous button or rewinding the current track triggering an unnecessary "Loading lyrics..." state that timed out into "Lyrics unavailable".
+- **Terminal Mojibake on Windows:** Updated Windows startup script to automatically set UTF-8 console encoding (`chcp 65001`) and added CP437 mojibake reversal so Asian track titles log cleanly without character corruption.
+- **Multi-Pass & Bilingual LRC Duplication:** Fixed multi-pass LRC files (such as YOASOBI's *"アイドル"* containing appended or interleaved Romaji sections) causing duplicate lines and orphaned Romaji active cards.
+- **Missing Translations on Multilingual Lines:** Fixed Chinese lines in multilingual tracks failing to translate or showing blank sub-text due to language code mismatches.
+- **Chinese Pinyin in Songs with Korean Verses:** Fixed Chinese lyrics being mistakenly treated as Korean Hanja in songs containing both Korean and Chinese, restoring instant **Pinyin** generation.
+- **Corrupted Translation Cache:** Automatically cleared stale cache entries for affected tracks so they re-translate cleanly.
+
+---
+
 ### [1.2.0] - 2026-09-14 (`260914`)
 
 #### ✨ What's New

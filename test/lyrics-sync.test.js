@@ -9,6 +9,7 @@ function createMockContainer() {
     clientHeight: 200,
     innerHTML: '',
     children: [],
+    appendChild: () => {},
     addEventListener: () => {},
     getBoundingClientRect: () => ({
       top: 50,
@@ -144,6 +145,24 @@ async function runTests() {
   assert.strictEqual(engine.loadingWatchdogTimeout, null, 'loadLyrics should clear watchdog timeout');
   assert.ok(container.innerHTML.includes('Lyrics unavailable for this track'));
 
+  // 9b. Glitch prevention: repeated loadLyrics with empty lines does not rewrite DOM if already unavailable
+  const prevHtml = container.innerHTML;
+  let domWrote = false;
+  const originalDesc = Object.getOwnPropertyDescriptor(container, 'innerHTML');
+  Object.defineProperty(container, 'innerHTML', {
+    get() { return prevHtml; },
+    set(_v) { domWrote = true; },
+    configurable: true
+  });
+  engine.loadLyrics({ lines: [] });
+  assert.strictEqual(domWrote, false, 'Repeated loadLyrics with empty lines must NOT rewrite DOM or cause reflow glitch');
+  if (originalDesc) {
+    Object.defineProperty(container, 'innerHTML', originalDesc);
+  } else {
+    delete container.innerHTML;
+    container.innerHTML = prevHtml;
+  }
+
   // Cancel animation loop for clean exit
   engine.destroy();
 
@@ -153,6 +172,85 @@ async function runTests() {
   assert.strictEqual(isSubtextDuplicate('Hello world!', 'Hello World'), true);
   assert.strictEqual(isSubtextDuplicate('like \u0399 have got', 'like I have got'), true, 'Greek Iota homoglyph must be detected as duplicate');
   assert.strictEqual(isSubtextDuplicate('Different text', 'Hello world'), false);
+
+  // 11. Intro test: First line must NOT light up before its timestamp
+  const introTest = createMockContainer();
+  introTest.addElement(0, 0, 30);
+  introTest.addElement(1, 40, 30);
+  introTest.addElement(2, 80, 40);
+
+  const introEngine = new LyricsSyncEngine(introTest.container);
+  introEngine.lines = [
+    { timeMs: 53370, text: 'Stole a key' },
+    { timeMs: 57470, text: 'Took a car downtown where the lost boys meet' }
+  ];
+  introEngine.durationMs = 285000;
+
+  // At 46s (intro before line 0 starts at 53.37s)
+  introEngine.syncPosition(46000);
+  assert.strictEqual(introEngine.activeIndex, -1, 'First line should NOT be active before 53.37s');
+  assert.strictEqual(introTest.elements.get(0).classList.contains('active'), false, 'Line 0 must not have active class before its timestamp');
+
+  // Once reaching 53.37s
+  introEngine.syncPosition(53370);
+  assert.strictEqual(introEngine.activeIndex, 0, 'First line should become active at 53.37s');
+  assert.strictEqual(introTest.elements.get(0).classList.contains('active'), true, 'Line 0 must have active class once reached');
+
+  // Scrubbing back to intro (e.g. 20s)
+  introEngine.scrubTo(20000);
+  assert.strictEqual(introEngine.activeIndex, -1, 'Scrubbing back to intro should deactivate line 0');
+  assert.strictEqual(introTest.elements.get(0).classList.contains('active'), false, 'Line 0 must lose active class when scrubbed back to intro');
+  introEngine.isScrubbing = false;
+
+  // 12. Rewind test: rewinding back to 0:00 resets sync position and retains loaded lyrics
+  introEngine.syncPosition(58000);
+  assert.strictEqual(introEngine.activeIndex, 1, 'Line 1 should be active at 58s');
+  introEngine.syncPosition(0);
+  assert.strictEqual(introEngine.activeIndex, -1, 'Rewind to 0 should reset activeIndex to -1');
+  assert.strictEqual(introEngine.lines.length, 2, 'Rewind must NEVER wipe loaded lyrics lines');
+  assert.strictEqual(introEngine.targetScrollTop, 0, 'Rewind to 0 must reset targetScrollTop to 0');
+
+  introEngine.destroy();
+
+  // 13. Pending translation race condition test:
+  // updateTranslations called while lines are empty caches pendingTranslations, which loadLyrics then consumes
+  const raceTest = createMockContainer();
+  const raceEngine = new LyricsSyncEngine(raceTest.container);
+  raceEngine.updateTranslations({
+    lines: [
+      { timeMs: 162510, translation: 'Everything that lives dies one day' },
+      { timeMs: 173550, translation: 'Whether we are ready to die or not' }
+    ]
+  });
+  assert.ok(raceEngine.pendingTranslations, 'pendingTranslations should be cached when lines are not yet populated');
+  assert.strictEqual(raceEngine.pendingTranslations.lines.length, 2);
+
+  const rawData = {
+    lines: [
+      { timeMs: 162510, original: 'Alles Lebendige stirbt eines Tages', translation: '' },
+      { timeMs: 173550, original: 'Ob wir zum Sterben bereit sind oder nicht', translation: '' }
+    ]
+  };
+  global.document = {
+    createDocumentFragment: () => ({ appendChild: () => {} }),
+    createElement: () => {
+      const classList = new Set();
+      return {
+        className: '',
+        style: {},
+        classList: { add: (c) => classList.add(c), remove: (c) => classList.delete(c), contains: (c) => classList.has(c) },
+        appendChild: () => {},
+        querySelector: () => null,
+        dataset: {}
+      };
+    }
+  };
+  raceEngine.loadLyrics(rawData);
+  assert.strictEqual(raceEngine.lines[0].translation, 'Everything that lives dies one day');
+  assert.strictEqual(raceEngine.lines[1].translation, 'Whether we are ready to die or not');
+  assert.strictEqual(raceEngine.hasTranslation(), true);
+  assert.strictEqual(raceEngine.pendingTranslations, null, 'pendingTranslations should be cleared after being consumed');
+  raceEngine.destroy();
 
   console.log('All LyricsSyncEngine tests passed successfully!');
 }

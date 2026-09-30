@@ -16,7 +16,20 @@ async function runTests() {
   // Test Transliteration
   const japaneseRomaji = await service.transliterateLine('君の声を聴かせて', 'japanese');
   console.log('Japanese Romaji output:', japaneseRomaji);
-  assert.ok(japaneseRomaji.toLowerCase().includes('kimi') || japaneseRomaji.toLowerCase().includes('koe'), `Expected romaji for Japanese, got: ${japaneseRomaji}`);
+  assert.ok(japaneseRomaji.toLowerCase().includes('kimi') && japaneseRomaji.toLowerCase().includes('koe'), `Expected romaji for Japanese, got: ${japaneseRomaji}`);
+  assert.ok(/\bwo\b/.test(japaneseRomaji), `君の声を聴かせて must Romanize を as 'wo', got: ${japaneseRomaji}`);
+
+  // Test explicit differentiation of 'o' (お/オ) vs 'wo' (を/ヲ)
+  const ochaWoNomu = await service.transliterateLine('お茶を飲む', 'japanese');
+  assert.strictEqual(ochaWoNomu, 'ocha wo nomu', `お茶を飲む must differentiate o (お) and wo (を), got: ${ochaWoNomu}`);
+
+  const wotaku = await service.transliterateLine('ヲタク', 'japanese');
+  assert.strictEqual(wotaku, 'wotaku', `ヲタク must Romanize ヲ as 'wo', got: ${wotaku}`);
+
+  const standaloneO = await service.transliterateLine('お', 'japanese');
+  const standaloneWo = await service.transliterateLine('を', 'japanese');
+  assert.strictEqual(standaloneO, 'o', `Standalone お must Romanize to 'o'`);
+  assert.strictEqual(standaloneWo, 'wo', `Standalone を must Romanize to 'wo'`);
 
   const koreanRomaji = await service.transliterateLine('사랑해요', 'korean');
   console.log('Korean Romanization output:', koreanRomaji);

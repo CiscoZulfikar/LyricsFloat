@@ -10,10 +10,55 @@ const CHANGELOG_DATA = [
     isExpanded: true,
     releases: [
       {
-        version: 'v1.2.0',
-        date: '260914',
+        version: 'v1.2.1',
+        date: '260930',
         isLatest: true,
         isExpanded: true,
+        sections: [
+          {
+            type: 'new',
+            title: "✨ What's New",
+            items: [
+              { title: "Japanese \"o\" vs \"wo\" Distinction", desc: "Romanization now clearly differentiates between the grammatical particle <code>を</code>/<code>ヲ</code> (romanized as <code>wo</code>) and standard vowels <code>お</code>/<code>オ</code> (romanized as <code>o</code>) for natural singing and pronunciation." },
+              { title: "Native Script Prioritization", desc: "Lyrics retrieval now actively prioritizes authentic Japanese Kanji/Kana lyrics with accurate line timings over community-uploaded Romaji text." },
+              { title: "Smooth Lyrics State Crossfade", desc: "Added subtle, fluid fade animations when transitioning between the loading state and loaded lyrics, as well as an elegant dissolve-out when switching songs." },
+              { title: "Trilingual & Multilingual Support", desc: "Songs with 3 or more languages and mixed scripts (such as English, Korean, and Chinese in <em>\"MORE\"</em> by K/DA) now fully support synchronized translations and romanization side-by-side." },
+              { title: "Trilingual Test Suite", desc: "Added automated integration tests covering multilingual songs with mixed Korean, Chinese, and English verses." }
+            ]
+          },
+          {
+            type: 'mod',
+            title: "🛠️ What's Been Modified",
+            items: [
+              { title: "Refined Artwork Modal Dismissal", desc: "Removed the <em>\"Click anywhere to close\"</em> tooltip; clicking on the artwork card no longer dismisses the modal, while backdrop clicks, the close button, and the <code>Escape</code> key cleanly close it." },
+              { title: "Smarter Regional Language Detection", desc: "Regional language codes (like <code>zh-cn</code>, <code>zh-tw</code>, <code>es-419</code>, <code>pt-br</code>) are now matched by their base language, preventing dialect lines from being rejected as unrecognized codes." },
+              { title: "Script-Aware Language Guard", desc: "Fallback re-translations now check script types to prevent forcing mismatched languages (e.g. treating Chinese characters as Korean)." }
+            ]
+          },
+          {
+            type: 'fix',
+            title: "🐛 What's Been Fixed",
+            items: [
+              { title: "Full-Size Artwork Modal Marquee Scrolling", desc: "Fixed overflowing album titles (such as <em>Anime \"Attack on Titan\" Original Soundtrack</em>) getting clipped on the right without scrolling inside the full-size artwork modal by properly binding the wrapper element to its overflow container and ensuring <code>flex-shrink: 0</code>." },
+              { title: "\"Lyrics Unavailable\" Flickering & Glitch", desc: "Fixed an issue where the <em>\"Lyrics unavailable for this track\"</em> message and pulse ring flickered and re-rendered every 800ms due to playback state polling re-triggering entrance animations on tracks with empty lyrics." },
+              { title: "Startup Lyrics Fetch Resilience & Auto-Retry", desc: "Separated exact LRCLIB lookup and search into isolated stages with an increased 7-second timeout and automatic 3.5s background retry. Tracks playing when LyricsFloat launches no longer get stuck permanently on <em>\"Lyrics unavailable\"</em> due to transient startup network lag or upstream 503 errors." },
+              { title: "Click-to-Retry Unavailable Lyrics", desc: "Made the <em>\"Lyrics unavailable\"</em> message interactively clickable with subtle hover feedback so users can instantly re-trigger lyrics retrieval anytime without restarting the app." },
+              { title: "Startup IPC Race Condition", desc: "Moved renderer IPC event subscriptions prior to initial state retrieval, ensuring events emitted during window startup are never dropped." },
+              { title: "Rewind & Replay Lyrics Retention", desc: "Fixed clicking the Previous button or rewinding the current track triggering an unnecessary <em>\"Loading lyrics...\"</em> state that timed out into <em>\"Lyrics unavailable\"</em>." },
+              { title: "Terminal Mojibake on Windows", desc: "Updated Windows startup script to automatically set UTF-8 console encoding (<code>chcp 65001</code>) and added CP437 mojibake reversal so Asian track titles log cleanly without character corruption." },
+              { title: "Multi-Pass & Bilingual LRC Duplication", desc: "Fixed multi-pass LRC files (such as YOASOBI's <em>\"アイドル\"</em> containing appended or interleaved Romaji sections) causing duplicate lines and orphaned Romaji active cards." },
+              { title: "Missing Translations on Multilingual Lines", desc: "Fixed Chinese lines in multilingual tracks failing to translate or showing blank sub-text due to language code mismatches." },
+              { title: "Chinese Pinyin in Songs with Korean Verses", desc: "Fixed Chinese lyrics being mistakenly treated as Korean Hanja in songs containing both Korean and Chinese, restoring instant <strong>Pinyin</strong> generation." },
+              { title: "Corrupted Translation Cache", desc: "Automatically cleared stale cache entries for affected tracks so they re-translate cleanly." }
+            ]
+          }
+        ]
+      },
+      {
+        version: 'v1.2.0',
+        date: '260914',
+        isLatest: false,
+        isExpanded: false,
         sections: [
           {
             type: 'new',

@@ -1,5 +1,6 @@
 const Kuroshiro = require('kuroshiro');
 const KuromojiAnalyzer = require('kuroshiro-analyzer-kuromoji');
+const KuroshiroUtil = require('kuroshiro/lib/util');
 const pinyin = require('pinyin');
 const wanakana = require('wanakana');
 
@@ -268,16 +269,29 @@ class TransliterationService {
       if (script === 'japanese') {
         await this.init();
         const lyricText = applyJapaneseLyricOverrides(text);
-        if (this.kuroshiro && this.kuroshiro._analyzer) {
-          const rawRomaji = await this.kuroshiro.convert(lyricText, {
-            to: 'romaji',
-            mode: 'spaced',
-            romajiSystem: 'hepburn'
+        if (this.analyzer && typeof this.analyzer.parse === 'function') {
+          const rawTokens = await this.analyzer.parse(lyricText);
+          const tokens = KuroshiroUtil.patchTokens(rawTokens);
+          const romajiTokens = tokens.map(token => {
+            // Explicitly differentiate を / ヲ ("wo") from お / オ ("o")
+            if (token.surface_form === 'を' || token.surface_form === 'ヲ') {
+              return 'wo';
+            }
+            let preToken;
+            if (KuroshiroUtil.hasJapanese(token.surface_form)) {
+              preToken = token.pronunciation || token.reading || token.surface_form;
+            } else {
+              preToken = token.surface_form;
+            }
+            if (typeof preToken === 'string' && /[をヲ]/.test(preToken)) {
+              preToken = preToken.replace(/を/g, 'うぉ').replace(/ヲ/g, 'ウォ');
+            }
+            return KuroshiroUtil.toRawRomaji(preToken, 'hepburn');
           });
-          const cleanRomaji = rawRomaji.replace(/\s+/g, ' ').trim();
+          const cleanRomaji = romajiTokens.join(' ').replace(/\s+/g, ' ').trim();
           return resolveRemainingKanji(cleanRomaji);
         } else {
-          // Fallback to wanakana
+          // Fallback to wanakana (wanakana naturally differentiates を -> wo and お -> o)
           return resolveRemainingKanji(wanakana.toRomaji(lyricText));
         }
       }
@@ -350,7 +364,11 @@ class TransliterationService {
       if (lineScript === 'chinese' && (songHasKana || overallScript === 'japanese')) {
         lineScript = 'japanese';
       } else if (lineScript === 'chinese' && (songHasHangul || overallScript === 'korean')) {
-        lineScript = 'korean';
+        if (/[\uAC00-\uD7AF\u1100-\u11FF]/.test(lineText)) {
+          lineScript = 'korean';
+        } else {
+          lineScript = 'chinese';
+        }
       }
 
       // Only transliterate if the line actually contains non-Latin script (Kanji, Kana, Hangul, Hanzi)

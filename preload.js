@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('lyricsFloatAPI', {
   onPlaybackState: (callback) => {
     ipcRenderer.on('playback-state', (_event, value) => callback(value));
   },
+  onTrackChanging: (callback) => {
+    ipcRenderer.on('track-changing', (_event, value) => callback(value));
+  },
   onLyricsLoaded: (callback) => {
     ipcRenderer.on('lyrics-loaded', (_event, value) => callback(value));
   },
@@ -21,7 +24,8 @@ contextBridge.exposeInMainWorld('lyricsFloatAPI', {
   setAlwaysOnTop: (flag) => ipcRenderer.invoke('set-always-on-top', flag),
   seekPlayback: (positionMs) => ipcRenderer.invoke('seek-playback', positionMs),
   controlPlayback: (action) => ipcRenderer.invoke('control-playback', action),
-  openExternal: (url) => ipcRenderer.invoke('open-external', url)
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  retryLyrics: () => ipcRenderer.invoke('retry-lyrics')
 });
 
 

@@ -206,6 +206,33 @@ async function runTest() {
     });
   });
 
+  // Test trilingual song with Korean, Chinese, and English (e.g. MORE by K/DA)
+  await new Promise((resolve) => {
+    const trilingualLyrics = {
+      synced: true,
+      lines: [
+        { timeMs: 1000, text: 'Way out' },
+        { timeMs: 2000, text: '사랑해요 그대' },
+        { timeMs: 3000, text: '感觉犹如海浪, on the wave now' }
+      ]
+    };
+    enricher.enrichLyrics('MORE Test', 'K/DA', trilingualLyrics, 'en', (update) => {
+      const line0Trans = update.lines[0].translation;
+      const line1Trans = update.lines[1].translation;
+      const line2Trans = update.lines[2].translation;
+
+      console.log(`[Trilingual MORE] Line 0 (English): "${line0Trans}" (expected empty)`);
+      console.log(`[Trilingual MORE] Line 1 (Korean): "${line1Trans}"`);
+      console.log(`[Trilingual MORE] Line 2 (Chinese + English): "${line2Trans}"`);
+
+      assert.strictEqual(line0Trans, '', 'English line must be suppressed');
+      assert.ok(line1Trans && /love/i.test(line1Trans), 'Korean line must be translated');
+      assert.ok(line2Trans && /wave/i.test(line2Trans) && line2Trans !== trilingualLyrics.lines[2].text, 'Chinese line must be translated');
+      console.log('Trilingual Korean + Chinese + English test passed!');
+      resolve();
+    });
+  });
+
   console.log('All multi-language tests passed successfully!');
 }
 
