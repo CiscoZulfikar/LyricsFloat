@@ -165,6 +165,7 @@ class MediaWatcher extends EventEmitter {
               title: data.Title,
               artist: data.Artist,
               album: data.Album || '',
+              trackNumber: data.TrackNumber || 0,
               durationMs: data.DurationMs || 0,
               positionMs: data.PositionMs || 0,
               isPlaying: Boolean(data.IsPlaying)
@@ -175,6 +176,7 @@ class MediaWatcher extends EventEmitter {
             title: data.Title,
             artist: data.Artist,
             album: data.Album || '',
+            trackNumber: data.TrackNumber || 0,
             positionMs: data.PositionMs || 0,
             durationMs: data.DurationMs || 0,
             isPlaying: Boolean(data.IsPlaying)

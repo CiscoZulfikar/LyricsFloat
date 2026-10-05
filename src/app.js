@@ -60,8 +60,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const artworkModalTitle = document.getElementById('artwork-modal-title');
   const artworkModalDivider = document.getElementById('artwork-modal-divider');
   const artworkModalArtist = document.getElementById('artwork-modal-artist');
+  const artworkModalMeta = document.getElementById('artwork-modal-meta');
   const btnCloseArtwork = document.getElementById('btn-close-artwork');
   let artworkCloseTimeout = null;
+  let artworkPeekTimeout = null;
 
   let currentCoverUrl = null;
   let currentTitle = '';
@@ -160,6 +162,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     artworkModalImg.src = currentCoverUrl;
     updateArtworkModalInfo();
     artworkModal.classList.remove('hidden', 'closing');
+
+    if (artworkPeekTimeout) {
+      clearTimeout(artworkPeekTimeout);
+      artworkPeekTimeout = null;
+    }
+    if (artworkModalMeta) {
+      artworkModalMeta.classList.add('peek-hint');
+      artworkPeekTimeout = setTimeout(() => {
+        artworkModalMeta.classList.remove('peek-hint');
+        artworkPeekTimeout = null;
+      }, 1800);
+    }
+
     requestAnimationFrame(() => {
       if (marquee && marquee.refreshArtwork) {
         marquee.refreshArtwork();
@@ -180,6 +195,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   function closeArtworkModal() {
     if (!artworkModal || artworkModal.classList.contains('hidden') || artworkModal.classList.contains('closing')) return;
     artworkModal.classList.add('closing');
+
+    if (artworkPeekTimeout) {
+      clearTimeout(artworkPeekTimeout);
+      artworkPeekTimeout = null;
+    }
+    if (artworkModalMeta) {
+      artworkModalMeta.classList.remove('peek-hint');
+    }
 
     if (marquee && marquee.resetArtwork) {
       marquee.resetArtwork();
@@ -253,6 +276,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnCloseArtwork.addEventListener('click', (e) => {
         e.stopPropagation();
         closeArtworkModal();
+      });
+    }
+
+    if (artworkModalMeta) {
+      artworkModalMeta.addEventListener('mouseenter', () => {
+        if (artworkPeekTimeout) {
+          clearTimeout(artworkPeekTimeout);
+          artworkPeekTimeout = null;
+          artworkModalMeta.classList.remove('peek-hint');
+        }
       });
     }
 
@@ -356,18 +389,81 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, EXIT_DURATION_MS);
   }
 
-  function handleTrackSwitch(newTitle, newArtist) {
+  let lastKnownPlayback = {
+    title: '',
+    artist: '',
+    album: '',
+    trackNumber: 0,
+    positionMs: 0,
+    durationMs: 0,
+    isPlaying: false
+  };
+
+  let deferredLoadingTimer = null;
+  let pendingContinuousTransition = null;
+
+  function handleTrackSwitch(newTitle, newArtist, nextTrackMeta = null) {
     const newTrackKey = normalizeTrackKey(newTitle, newArtist);
     if (newTrackKey && (newTrackKey === loadedTrackKey || newTrackKey === pendingTrackKey)) return;
+
+    if (deferredLoadingTimer) {
+      clearTimeout(deferredLoadingTimer);
+      deferredLoadingTimer = null;
+    }
 
     pendingTrackKey = newTrackKey;
 
     if (newTitle) currentTitle = newTitle;
     if (newArtist) currentArtist = newArtist;
+    if (nextTrackMeta && nextTrackMeta.album) currentAlbum = nextTrackMeta.album;
 
-    executeContentTransition(() => {
-      syncEngine.showLoading(newTitle, newArtist);
-    }, 'lyrics-loading-enter');
+    // Check if ContinuousSuites applies
+    const nextTrackInfo = {
+      title: newTitle,
+      artist: newArtist,
+      album: (nextTrackMeta && nextTrackMeta.album) || currentAlbum || '',
+      trackNumber: (nextTrackMeta && nextTrackMeta.trackNumber) || 0,
+      positionMs: (nextTrackMeta && nextTrackMeta.positionMs) || 0,
+      durationMs: (nextTrackMeta && nextTrackMeta.durationMs) || 0
+    };
+
+    const suiteEngine = (typeof window !== 'undefined' && window.ContinuousSuites) || (typeof ContinuousSuites !== 'undefined' ? ContinuousSuites : null);
+
+    const hasActiveLyrics = syncEngine && Array.isArray(syncEngine.lines) && syncEngine.lines.length > 0;
+    const isContinuous = Boolean(hasActiveLyrics && suiteEngine && suiteEngine.isVerifiedContinuousSuite(lastKnownPlayback, nextTrackInfo));
+    const isNaturalHandoff = Boolean(hasActiveLyrics && suiteEngine && suiteEngine.isNaturalAlbumHandoff(lastKnownPlayback, nextTrackInfo));
+    const isSeamlessCandidate = isContinuous || isNaturalHandoff;
+
+    if (isSeamlessCandidate) {
+      // Seamless deferred loading: do NOT blank screen immediately.
+      // Hold Track A's final line / break in place.
+      pendingContinuousTransition = {
+        isContinuous,
+        isNaturalHandoff,
+        prevTitle: lastKnownPlayback.title
+      };
+
+      // Set grace timer for 800ms
+      deferredLoadingTimer = setTimeout(() => {
+        const curKey = normalizeTrackKey(newTitle, newArtist);
+        if (loadedTrackKey === curKey && syncEngine && Array.isArray(syncEngine.lines) && syncEngine.lines.length > 0) {
+          pendingContinuousTransition = null;
+          deferredLoadingTimer = null;
+          return;
+        }
+        executeContentTransition(() => {
+          syncEngine.showLoading(newTitle, newArtist);
+        }, 'lyrics-loading-enter');
+        pendingContinuousTransition = null;
+        deferredLoadingTimer = null;
+      }, 800);
+    } else {
+      // Manual skip / unrelated track / cold load: show loading immediately
+      pendingContinuousTransition = null;
+      executeContentTransition(() => {
+        syncEngine.showLoading(newTitle, newArtist);
+      }, 'lyrics-loading-enter');
+    }
 
     translationPill.setLoading(false, '', true);
     setExplicitBadge(false);
@@ -375,6 +471,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (playbackController) {
     playbackController.onTrackChangeRequested = (action) => {
+      if (deferredLoadingTimer) {
+        clearTimeout(deferredLoadingTimer);
+        deferredLoadingTimer = null;
+      }
+      pendingContinuousTransition = null;
+
       if (action === 'previous') {
         // Rewinding or restarting track: keep current lyrics intact and reset sync position to beginning.
         // If an actual track change occurs, MediaWatcher will detect it and transition cleanly.
@@ -434,6 +536,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   function applyPlaybackState(state) {
     if (!state) return;
 
+    if (state.title) lastKnownPlayback.title = state.title;
+    if (state.artist) lastKnownPlayback.artist = state.artist;
+    if (state.album) lastKnownPlayback.album = state.album;
+    if (state.trackNumber !== undefined) lastKnownPlayback.trackNumber = state.trackNumber;
+    if (state.positionMs !== undefined) lastKnownPlayback.positionMs = state.positionMs;
+    if (state.durationMs !== undefined) lastKnownPlayback.durationMs = state.durationMs;
+    if (state.isPlaying !== undefined) lastKnownPlayback.isPlaying = state.isPlaying;
+
     const newTrackKey = normalizeTrackKey(state.title, state.artist);
     const isNewTrack = Boolean(newTrackKey && (!currentTrackKey || newTrackKey !== currentTrackKey));
 
@@ -441,7 +551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentTrackKey = newTrackKey;
       // handleTrackSwitch itself checks pendingTrackKey to prevent double-fire
       if (loadedTrackKey !== newTrackKey) {
-        handleTrackSwitch(state.title, state.artist);
+        handleTrackSwitch(state.title, state.artist, state);
         if (!state.coverUrl) setCoverArt(null);
       }
     } else {
@@ -494,8 +604,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.lyricsFloatAPI) {
     if (window.lyricsFloatAPI.onTrackChanging) {
       window.lyricsFloatAPI.onTrackChanging((track) => {
-        if (track?.title) currentTitle = track.title;
-        if (track?.artist) currentArtist = track.artist;
+        if (track?.title) {
+          currentTitle = track.title;
+          marquee.updateTitle(track.title);
+        }
+        if (track?.artist) {
+          currentArtist = track.artist;
+          marquee.updateArtist(track.artist);
+        }
         if (track?.album) currentAlbum = track.album;
         if (artworkModal && !artworkModal.classList.contains('hidden')) {
           updateArtworkModalInfo();
@@ -503,7 +619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const key = normalizeTrackKey(track?.title, track?.artist);
         if (key && key !== currentTrackKey) {
           currentTrackKey = key;
-          handleTrackSwitch(track.title, track.artist);
+          handleTrackSwitch(track.title, track.artist, track);
         }
       });
     }
@@ -536,9 +652,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         setExplicitBadge(enrichedData.isExplicit);
       }
 
-      executeContentTransition(() => {
-        syncEngine.loadLyrics(enrichedData);
-      }, 'lyrics-loaded-enter');
+      if (deferredLoadingTimer) {
+        clearTimeout(deferredLoadingTimer);
+        deferredLoadingTimer = null;
+      }
+
+      const transitionMeta = pendingContinuousTransition;
+      pendingContinuousTransition = null;
+
+      if (transitionMeta) {
+        // Direct seamless crossfade: skip blanking/exit animation!
+        syncEngine.loadLyrics(enrichedData, {
+          isContinuous: transitionMeta.isContinuous,
+          isSeamless: true
+        });
+        updateToolbarCapabilities();
+      } else {
+        executeContentTransition(() => {
+          syncEngine.loadLyrics(enrichedData);
+        }, 'lyrics-loaded-enter');
+      }
 
       updateToolbarCapabilities();
 

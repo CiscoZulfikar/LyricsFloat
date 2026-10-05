@@ -10,10 +10,47 @@ const CHANGELOG_DATA = [
     isExpanded: true,
     releases: [
       {
-        version: 'v1.2.1',
-        date: '260930',
+        version: 'v1.2.2',
+        date: '261005',
         isLatest: true,
         isExpanded: true,
+        sections: [
+          {
+            type: 'new',
+            title: "✨ What's New",
+            items: [
+              { title: "Continuous Suite & Album Transitions", desc: "Smooth, zero-flash transitions for continuous songs and consecutive album tracks (e.g. The Weeknd - <em>\"Baptized in Fear\"</em> → <em>\"Open Hearts\"</em>), crossfading directly into the next track's lyrics without loading flicker." },
+              { title: "Compound Medley Splitting & Stitching", desc: "Automatically splits combined tracks (e.g. <em>\"Holiday / Boulevard of Broken Dreams\"</em>) to fetch and stitch synchronized lyrics with duration offsets." },
+              { title: "Instrumental Breaks & Solos (•••)", desc: "Extended musical breaks, solos, and long intros now display an ambient, gently pulsing 3-dot indicator matching your theme accent." },
+              { title: "Micro-Break Filtering", desc: "Brief pauses and line-clears under 6s are automatically suppressed to keep vocals smooth and eliminate frequent 3-dot popups." },
+              { title: "Artwork Peek Hint & Themed Hint Pill", desc: "Opening the artwork modal briefly previews the track details for 1.8 seconds before tucking away. A subtle, theme-reactive frosted pill at the bottom edge indicates the expandable info drawer, automatically fading out when the details expand." }
+            ]
+          },
+          {
+            type: 'mod',
+            title: "🛠️ What's Been Modified",
+            items: [
+              { title: "Interactive Artwork Metadata on Hover", desc: "The album and track details overlay in the full-size artwork modal now hides by default to keep album artwork completely unobstructed, smoothly animating into view when the cursor enters the bottom 33% of the artwork." }
+            ]
+          },
+          {
+            type: 'fix',
+            title: "🐛 What's Been Fixed",
+            items: [
+              { title: "Multiple & Featured Artist Display", desc: "Full artist credits (e.g. <em>\"SZA, Travis Scott\"</em>) now appear reliably across the header, artwork modal, and lyrics metadata." },
+              { title: "Accurate Album Cover Art", desc: "Prioritized standard album releases over deluxe, repack, or solo variants (e.g. correctly showing the standard <em>SOS</em> ocean cover)." },
+              { title: "Windows Terminal Output", desc: "Fixed console logs stair-stepping diagonally across PowerShell by normalizing newlines to <code>\\r\\n</code>." },
+              { title: "Punctuation Normalization", desc: "Cleans up community transcription artifacts like inverted question/exclamation marks (<code>¡</code>, <code>¿</code>) on non-Spanish songs." },
+              { title: "Continuous Songs Loading Screen Flicker", desc: "Fixed an issue where continuous songs momentarily showed the \"Loading lyrics...\" screen even after the lyrics had already been displayed." }
+            ]
+          }
+        ]
+      },
+      {
+        version: 'v1.2.1',
+        date: '260930',
+        isLatest: false,
+        isExpanded: false,
         sections: [
           {
             type: 'new',

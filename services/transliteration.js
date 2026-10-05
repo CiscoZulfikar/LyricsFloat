@@ -351,7 +351,8 @@ class TransliterationService {
       return lines.map(l => ({
         timeMs: l.timeMs,
         original: l.text || l.original || '',
-        romaji: ''
+        romaji: '',
+        isBreak: Boolean(l.isBreak)
       }));
     }
 
@@ -382,7 +383,8 @@ class TransliterationService {
       results.push({
         timeMs: line.timeMs,
         original: lineText,
-        romaji
+        romaji,
+        isBreak: Boolean(line.isBreak)
       });
     }
     return results;

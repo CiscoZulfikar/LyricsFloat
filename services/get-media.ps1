@@ -155,6 +155,7 @@ try {
                     Title = $props.Title
                     Artist = $props.Artist
                     Album = $props.AlbumTitle
+                    TrackNumber = if ($props.TrackNumber) { [int]$props.TrackNumber } else { 0 }
                     IsPlaying = $isPlaying
                     PositionMs = [Math]::Round($pos)
                     DurationMs = if ($timeline.EndTime) { [Math]::Round($timeline.EndTime.TotalMilliseconds) } else { 0 }
@@ -184,6 +185,7 @@ try {
                 Title = $songTitle
                 Artist = $artist
                 Album = ''
+                TrackNumber = 0
                 IsPlaying = $true
                 PositionMs = 0
                 DurationMs = 0
@@ -249,6 +251,7 @@ try {
                     Title = $songTitle
                     Artist = $artist
                     Album = ''
+                    TrackNumber = 0
                     IsPlaying = $true
                     PositionMs = 0
                     DurationMs = 0

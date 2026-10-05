@@ -60,6 +60,31 @@ async function runTests() {
   assert.strictEqual(metaStarboy.artist, 'The Weeknd, Daft Punk', `Expected artist to be "The Weeknd, Daft Punk", got "${metaStarboy.artist}"`);
   console.log('✓ Starboy correctly resolved full artist credits:', metaStarboy.artist);
 
+  // Test 8: Candidate scoring discrimination against unwanted deluxe/solo variants
+  const { scoreTrackCandidate } = require('../services/cover-service');
+  const deluxeSoloCandidate = {
+    title: 'Open Arms (just SZA)',
+    album: { title: 'SOS Deluxe: LANA' },
+    artist: { name: 'SZA' }
+  };
+  const standardFeatCandidate = {
+    title: 'Open Arms (feat. Travis Scott)',
+    album: { title: 'SOS' },
+    artist: { name: 'SZA' }
+  };
+  const scoreDeluxe = scoreTrackCandidate(deluxeSoloCandidate, 'Open Arms (feat. Travis Scott)', 'SZA', 'SOS');
+  const scoreStandard = scoreTrackCandidate(standardFeatCandidate, 'Open Arms (feat. Travis Scott)', 'SZA', 'SOS');
+  assert(scoreStandard > scoreDeluxe, `Expected standard candidate score (${scoreStandard}) to exceed deluxe/solo score (${scoreDeluxe})`);
+  console.log(`✓ Candidate scoring correctly prioritized standard SOS release over deluxe solo variant (${scoreStandard} > ${scoreDeluxe})`);
+
+  // Test 9: Real-world multi-artist and album resolution for "Open Arms (feat. Travis Scott)" on "SOS"
+  const metaOpenArms = await service.fetchTrackMetadata('Open Arms (feat. Travis Scott)', 'SZA', 'SOS');
+  assert(metaOpenArms, 'Expected metadata for Open Arms');
+  assert.strictEqual(metaOpenArms.album, 'SOS', `Expected album to be "SOS", got "${metaOpenArms.album}"`);
+  assert.strictEqual(metaOpenArms.artist, 'SZA, Travis Scott', `Expected artist to be "SZA, Travis Scott", got "${metaOpenArms.artist}"`);
+  assert(metaOpenArms.coverUrl, 'Expected non-null coverUrl for Open Arms on SOS');
+  console.log('✓ Open Arms correctly resolved album "SOS" and artist "SZA, Travis Scott":', metaOpenArms.coverUrl);
+
   console.log('All CoverService tests passed successfully!');
 }
 

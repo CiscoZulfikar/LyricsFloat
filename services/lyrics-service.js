@@ -3,6 +3,16 @@ const path = require('path');
 
 const CJK_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
 
+const SPANISH_MARKERS = /\b(estoy|estás|está|estamos|están|quiero|tengo|tienes|tiene|nadie|cuando|tiempo|siempre|corazón|noche|nada|vida|aqui|aquí|puedo|puedes|puede|tenerte|olvidarme|respirar|cuesta|entonces|despacito|cuello|deja|diga|cosas|oído|olha|yo|tú|él|ella|ellos|ellas|nosotros|usted|ustedes|nuestro|nuestra|pero|más|muy|bueno|buena|después|quién|decir|dice|dijo|hola|amigo|amiga|señor|señora|por favor|gracias)\b/i;
+
+function normalizePunctuation(text, isSpanishContext = false) {
+  if (!text || typeof text !== 'string') return text;
+  if (isSpanishContext) return text;
+  if (SPANISH_MARKERS.test(text)) return text;
+  return text.replace(/¡\s*/g, '').replace(/¿\s*/g, '');
+}
+
+
 function scoreCandidate(item, title, artist, album, targetDurationSec) {
   let score = 0;
   if (item.syncedLyrics) score += 10000;
@@ -33,7 +43,7 @@ function scoreCandidate(item, title, artist, album, targetDurationSec) {
   // 2. Artist Matching
   if (itemArtistNorm === targetArtistNorm) {
     score += 4000;
-  } else if (itemArtistNorm.includes(targetArtistNorm)) {
+  } else if (itemArtistNorm.includes(targetArtistNorm) || targetArtistNorm.includes(itemArtistNorm)) {
     score += 1500;
   } else {
     score -= 3000;
@@ -90,12 +100,13 @@ class LyricsService {
     this.memoryCache = new Map();
   }
 
-  parseLrc(lrcText, title = '', artist = '') {
+  parseLrc(lrcText, title = '', artist = '', durationSec = 0) {
     if (!lrcText || typeof lrcText !== 'string') return [];
     const rawLines = lrcText.split(/\r?\n/);
 
     const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
     const queryHasCJK = CJK_REGEX.test(title || '') || CJK_REGEX.test(artist || '');
+    const isSpanishTrack = SPANISH_MARKERS.test(title || '') || SPANISH_MARKERS.test(artist || '') || SPANISH_MARKERS.test(lrcText || '');
 
     // Step 1: Parse lines and detect passes (sections where timestamp resets backwards)
     const passes = [];
@@ -105,7 +116,10 @@ class LyricsService {
     for (const rawLine of rawLines) {
       const match = [...rawLine.matchAll(timeRegex)];
       if (match.length > 0) {
-        const text = rawLine.replace(timeRegex, '').trim();
+        const rawText = rawLine.replace(timeRegex, '').trim();
+        const isInstrumental = !rawText || /^[\s♪♫🎵\-~…\.]+$/u.test(rawText);
+        const cleanText = isInstrumental ? '' : normalizePunctuation(rawText, isSpanishTrack);
+
         for (const m of match) {
           const minutes = parseInt(m[1], 10);
           const seconds = parseInt(m[2], 10);
@@ -122,8 +136,16 @@ class LyricsService {
             maxTimeInPass = -1;
           }
 
-          if (text) {
-            currentPass.push({ timeMs, text });
+          if (isInstrumental) {
+            const prev = currentPass[currentPass.length - 1];
+            if (!prev || !prev.isBreak) {
+              currentPass.push({ timeMs, text: '', isBreak: true });
+              if (timeMs > maxTimeInPass) {
+                maxTimeInPass = timeMs;
+              }
+            }
+          } else {
+            currentPass.push({ timeMs, text: cleanText, isBreak: false });
             if (timeMs > maxTimeInPass) {
               maxTimeInPass = timeMs;
             }
@@ -187,6 +209,16 @@ class LyricsService {
 
       // Lines sharing virtually identical timestamps (<= 250ms)
       if (timeDiff <= 250) {
+        // If one is break and the other has text, always prioritize the real lyric text
+        if (prev.isBreak && !current.isBreak) {
+          result[result.length - 1] = current;
+          continue;
+        } else if (!prev.isBreak && current.isBreak) {
+          continue;
+        } else if (prev.isBreak && current.isBreak) {
+          continue;
+        }
+
         // A. Exact duplicate text
         if (norm(current.text) === norm(prev.text)) {
           continue;
@@ -210,11 +242,177 @@ class LyricsService {
       result.push(current);
     }
 
-    return result;
+    // Step 4b: Filter out transient micro-breaks (< 6000ms)
+    // Transcribers frequently add empty timestamps right after lines to clear the line,
+    // or brief 1-2s pauses between consecutive vocal phrases.
+    // Real instrumental interludes and solos are substantial breaks (>= 6s).
+    const filteredResult = [];
+    for (let i = 0; i < result.length; i++) {
+      const line = result[i];
+      if (line.isBreak) {
+        if (i < result.length - 1) {
+          const next = result[i + 1];
+          const breakDurationMs = next.timeMs - line.timeMs;
+          // If the break lasts less than 6 seconds before the next lyric, ignore it as a brief micro-pause
+          if (breakDurationMs < 6000) {
+            continue;
+          }
+        } else {
+          // Final line break (outro)
+          if (durationSec > 0) {
+            const trackEndMs = durationSec * 1000;
+            if (trackEndMs - line.timeMs < 6000) {
+              continue;
+            }
+          } else if (filteredResult.length > 0 && (line.timeMs - filteredResult[filteredResult.length - 1].timeMs < 6000)) {
+            continue;
+          }
+        }
+      }
+      filteredResult.push(line);
+    }
+
+    // Step 5: Intro Break & Long Gap Interlude Injection
+    const processed = [];
+    if (filteredResult.length > 0 && filteredResult[0].timeMs >= 8000 && !filteredResult[0].isBreak) {
+      processed.push({ timeMs: 0, text: '', isBreak: true });
+    }
+
+    for (let i = 0; i < filteredResult.length; i++) {
+      processed.push(filteredResult[i]);
+      if (i < filteredResult.length - 1) {
+        const curr = filteredResult[i];
+        const next = filteredResult[i + 1];
+        if (!curr.isBreak && !next.isBreak) {
+          const gapMs = next.timeMs - curr.timeMs;
+          if (gapMs >= 15000) {
+            const words = (curr.text || '').trim().split(/\s+/).filter(Boolean).length;
+            const vocalHoldMs = Math.min(10000, Math.max(5000, words * 650));
+            const breakStartMs = curr.timeMs + vocalHoldMs;
+            if (next.timeMs - breakStartMs >= 6000) {
+              processed.push({ timeMs: breakStartMs, text: '', isBreak: true, isSynthetic: true });
+            }
+          }
+        }
+      }
+    }
+
+    return processed;
   }
 
   getCacheKey(title, artist) {
     return `${(title || '').toLowerCase().trim()}___${(artist || '').toLowerCase().trim()}`;
+  }
+
+  splitCompoundTitle(title) {
+    if (!title || typeof title !== 'string') return [];
+    // Only split on explicit delimiters: slash, backslash, en-dash, em-dash, or hyphen surrounded by spaces
+    const parts = title.split(/\s*[/\\–—]\s*|\s+-\s+/).map(p => p.trim()).filter(p => p.length >= 2);
+    if (parts.length >= 2) {
+      return parts;
+    }
+    return [];
+  }
+
+  async queryTrackLyrics(trackTitle, trackArtist, trackAlbum, durationSec = 0) {
+    if (!trackTitle || !trackArtist) return null;
+    try {
+      const params = new URLSearchParams({
+        track_name: trackTitle,
+        artist_name: trackArtist
+      });
+      if (trackAlbum) params.append('album_name', trackAlbum);
+      if (durationSec) params.append('duration', Math.round(durationSec));
+
+      const res = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
+        headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (res.status === 200) {
+        const exact = await res.json();
+        if (exact && exact.syncedLyrics) return exact;
+      } else if (res.status === 404) {
+        const primaryArtist = trackArtist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
+        if (primaryArtist && primaryArtist.toLowerCase() !== trackArtist.toLowerCase()) {
+          const fallbackParams = new URLSearchParams({
+            track_name: trackTitle,
+            artist_name: primaryArtist
+          });
+          if (trackAlbum) fallbackParams.append('album_name', trackAlbum);
+          if (durationSec) fallbackParams.append('duration', Math.round(durationSec));
+          const fallbackRes = await fetch(`https://lrclib.net/api/get?${fallbackParams.toString()}`, {
+            headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
+            signal: AbortSignal.timeout(5000)
+          });
+          if (fallbackRes.status === 200) {
+            const fallbackExact = await fallbackRes.json();
+            if (fallbackExact && fallbackExact.syncedLyrics) return fallbackExact;
+          }
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${trackTitle} ${trackArtist}`)}`, {
+        headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (searchRes.ok) {
+        const list = await searchRes.json();
+        if (Array.isArray(list) && list.length > 0) {
+          list.sort((a, b) => scoreCandidate(b, trackTitle, trackArtist, trackAlbum, durationSec) - scoreCandidate(a, trackTitle, trackArtist, trackAlbum, durationSec));
+          const best = list[0];
+          if (best && (best.syncedLyrics || best.plainLyrics)) return best;
+        }
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
+  stitchMedley(part1Data, part2Data, fullTitle, artist, album, totalDurationSec = 0) {
+    if (!part1Data || !part2Data) return null;
+
+    let offsetMs = 0;
+    if (part1Data.duration && part1Data.duration > 30) {
+      offsetMs = Math.round(part1Data.duration * 1000);
+    } else {
+      const part1Lines = this.parseLrc(part1Data.syncedLyrics || '', fullTitle, artist);
+      const maxTime = part1Lines.length > 0 ? part1Lines[part1Lines.length - 1].timeMs : 0;
+      if (maxTime > 20000) {
+        offsetMs = maxTime + 6000;
+      } else if (totalDurationSec > 60) {
+        offsetMs = Math.round((totalDurationSec / 2) * 1000);
+      } else {
+        offsetMs = 210000;
+      }
+    }
+
+    const part1Lines = this.parseLrc(part1Data.syncedLyrics || '', fullTitle, artist);
+    const part2Lines = this.parseLrc(part2Data.syncedLyrics || '', fullTitle, artist);
+
+    const shiftedPart2 = part2Lines.map(line => ({
+      ...line,
+      timeMs: line.timeMs + offsetMs
+    }));
+
+    const combinedLines = [...part1Lines, ...shiftedPart2];
+    combinedLines.sort((a, b) => a.timeMs - b.timeMs);
+
+    const providerUrl = part1Data.id
+      ? `https://lrclib.net/tracks/${part1Data.id}`
+      : `https://lrclib.net/search/${encodeURIComponent(`${fullTitle} ${artist}`)}`;
+
+    return {
+      synced: true,
+      album: album || part1Data.albumName || '',
+      lines: combinedLines,
+      plainLyrics: `${part1Data.plainLyrics || ''}\n\n---\n\n${part2Data.plainLyrics || ''}`.trim(),
+      provider: {
+        name: 'LRCLIB (Medley Stitched)',
+        url: providerUrl
+      }
+    };
   }
 
   clearCache(title, artist) {
@@ -251,6 +449,23 @@ class LyricsService {
 
       if (res.status === 200) {
         data = await res.json();
+      } else if (res.status === 404) {
+        const primaryArtist = artist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
+        if (primaryArtist && primaryArtist.toLowerCase() !== artist.toLowerCase()) {
+          const fallbackParams = new URLSearchParams({
+            track_name: title,
+            artist_name: primaryArtist
+          });
+          if (album) fallbackParams.append('album_name', album);
+          if (durationSec) fallbackParams.append('duration', Math.round(durationSec));
+          const fallbackRes = await fetch(`https://lrclib.net/api/get?${fallbackParams.toString()}`, {
+            headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
+            signal: AbortSignal.timeout(5000)
+          });
+          if (fallbackRes.status === 200) {
+            data = await fallbackRes.json();
+          }
+        }
       }
     } catch (exactErr) {
       console.warn(`[LyricsService] exact get warning: ${exactErr.message}`);
@@ -267,10 +482,17 @@ class LyricsService {
 
     if (needsSearch) {
       // Build search queries: primary query and fallback cleaned title query if applicable
+      const primaryArtist = artist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
       const searchQueries = [`${title} ${artist}`];
+      if (primaryArtist && primaryArtist.toLowerCase() !== artist.toLowerCase()) {
+        searchQueries.push(`${title} ${primaryArtist}`);
+      }
       const cleanedTitle = title.replace(/\s*[\(\[].*?[\)\]]/g, '').replace(/\s*-\s*.*$/, '').trim();
       if (cleanedTitle && cleanedTitle.toLowerCase() !== title.toLowerCase()) {
         searchQueries.push(`${cleanedTitle} ${artist}`);
+        if (primaryArtist && primaryArtist.toLowerCase() !== artist.toLowerCase()) {
+          searchQueries.push(`${cleanedTitle} ${primaryArtist}`);
+        }
       }
 
       for (const query of searchQueries) {
@@ -312,6 +534,29 @@ class LyricsService {
       }
     }
 
+    // Medley / Compound Title Fallback:
+    // If unsplit compound title (e.g. "Baptized in Fear / Open Hearts") returned no synced lyrics,
+    // split into individual parts and stitch them together with duration offset
+    if (!data || !data.syncedLyrics) {
+      const parts = this.splitCompoundTitle(title);
+      if (parts.length >= 2) {
+        try {
+          const part1Data = await this.queryTrackLyrics(parts[0], artist, album);
+          const part2Data = await this.queryTrackLyrics(parts[1], artist, album);
+
+          if (part1Data && part1Data.syncedLyrics && part2Data && part2Data.syncedLyrics) {
+            const stitched = this.stitchMedley(part1Data, part2Data, title, artist, album, durationSec);
+            if (stitched) {
+              this.memoryCache.set(cacheKey, stitched);
+              return stitched;
+            }
+          }
+        } catch (medleyErr) {
+          console.warn(`[LyricsService] medley stitching error: ${medleyErr.message}`);
+        }
+      }
+    }
+
     if (data) {
       let payload = null;
       const trackUrl = data.id 
@@ -327,12 +572,12 @@ class LyricsService {
         payload = {
           synced: true,
           album: data.albumName || album || '',
-          lines: this.parseLrc(data.syncedLyrics, title, artist),
+          lines: this.parseLrc(data.syncedLyrics, title, artist, durationSec),
           plainLyrics: data.plainLyrics || '',
           provider
         };
       } else if (data.plainLyrics) {
-        const parsed = this.parseLrc(data.plainLyrics, title, artist);
+        const parsed = this.parseLrc(data.plainLyrics, title, artist, durationSec);
         const lines = parsed.length > 0
           ? parsed
           : data.plainLyrics.split(/\r?\n/).map(text => ({ timeMs: 0, text: text.trim() })).filter(l => l.text.length > 0);
@@ -355,4 +600,4 @@ class LyricsService {
   }
 }
 
-module.exports = { LyricsService };
+module.exports = { LyricsService, normalizePunctuation, SPANISH_MARKERS };

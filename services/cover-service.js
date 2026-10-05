@@ -72,6 +72,72 @@ function isTrackMatch(resultTitle, targetTitle) {
 }
 
 
+function scoreTrackCandidate(item, targetTitle, targetArtist, targetAlbum) {
+  let score = 0;
+  const itemTitle = (item.title || item.trackName || '').toLowerCase().trim();
+  const targetTitleLower = (targetTitle || '').toLowerCase().trim();
+  const itemAlbum = ((item.album && item.album.title) || item.collectionName || '').toLowerCase().trim();
+  const targetAlbumLower = (targetAlbum || '').toLowerCase().trim();
+  const itemArtist = ((item.artist && item.artist.name) || item.artistName || '').toLowerCase().trim();
+  const targetArtistLower = (targetArtist || '').toLowerCase().trim();
+
+  const normTargetTitle = norm(targetTitleLower);
+  const normItemTitle = norm(itemTitle);
+  const normTargetClean = norm(cleanTitle(targetTitleLower));
+  const normItemClean = norm(cleanTitle(itemTitle));
+
+  const normTargetAlbum = norm(targetAlbumLower);
+  const normItemAlbum = norm(itemAlbum);
+
+  // 1. Album Matching
+  if (normTargetAlbum && normItemAlbum) {
+    if (normItemAlbum === normTargetAlbum) {
+      score += 6000;
+    } else if (normItemAlbum.startsWith(normTargetAlbum) || normItemAlbum.includes(normTargetAlbum)) {
+      score += 1500;
+      const targetHasDeluxe = /\b(deluxe|bonus|edition|repack|lana)\b/i.test(targetAlbumLower);
+      const itemHasDeluxe = /\b(deluxe|bonus|edition|repack|lana)\b/i.test(itemAlbum);
+      if (itemHasDeluxe && !targetHasDeluxe) {
+        score -= 4000;
+      }
+    } else {
+      score -= 3000;
+    }
+  }
+
+  // 2. Title Matching
+  if (normItemTitle === normTargetTitle) {
+    score += 7000;
+  } else if (normItemClean === normTargetClean) {
+    score += 4000;
+    const targetFeat = extractFeaturedFromTitle(targetTitle);
+    const itemFeat = extractFeaturedFromTitle(itemTitle);
+    if (targetFeat && itemFeat && norm(targetFeat) === norm(itemFeat)) {
+      score += 2500;
+    } else if (targetFeat && !itemFeat) {
+      score -= 2000;
+    }
+  } else if (normItemTitle.includes(normTargetClean)) {
+    score += 1000;
+  }
+
+  // Heavily penalize unwanted variations (e.g. "just SZA", "solo", "instrumental", "acoustic", "remix")
+  const unwantedExtra = /\((just\s+\w+|solo|acoustic|instrumental|karaoke|remix|live)/i.test(itemTitle);
+  const targetWanted = /\((just\s+\w+|solo|acoustic|instrumental|karaoke|remix|live)/i.test(targetTitleLower);
+  if (unwantedExtra && !targetWanted) {
+    score -= 8000;
+  }
+
+  // 3. Artist Matching
+  if (norm(itemArtist) === norm(targetArtistLower)) {
+    score += 3000;
+  } else if (norm(itemArtist).includes(norm(targetArtistLower)) || norm(targetArtistLower).includes(norm(itemArtist))) {
+    score += 1500;
+  }
+
+  return score;
+}
+
 function getTargetCountries(title, artist, album = '') {
   const combined = `${title} ${artist} ${album}`;
   if (/[\u3040-\u30ff]/.test(combined)) {
@@ -98,6 +164,16 @@ class CoverService {
     return crypto.createHash('md5').update(raw).digest('hex');
   }
 
+  finalizeMeta(meta, title, artist) {
+    if (!meta) return null;
+    const feat = extractFeaturedFromTitle(title);
+    if (feat) {
+      meta.artist = combineArtists(meta.artist || artist, feat);
+    }
+    meta.artist = meta.artist || artist;
+    return meta;
+  }
+
   async fetchTrackMetadata(title, artist, album = '') {
     if (!title || !artist) return null;
     const cacheKey = this.getCacheKey(title, artist, album);
@@ -105,9 +181,9 @@ class CoverService {
     if (this.memoryCache.has(cacheKey)) {
       const cached = this.memoryCache.get(cacheKey);
       if (typeof cached === 'string') {
-        return { coverUrl: cached, isExplicit: false, artist, album: album || '' };
+        return this.finalizeMeta({ coverUrl: cached, isExplicit: false, artist, album: album || '' }, title, artist);
       }
-      return cached;
+      return this.finalizeMeta(cached, title, artist);
     }
 
     const meta = {
@@ -128,11 +204,14 @@ class CoverService {
       if (album) {
         try {
           const q = encodeURIComponent(`${cleanedSearchTitle} ${artist} ${album}`);
-          const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=5`, { signal: AbortSignal.timeout(3500) });
+          const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=8`, { signal: AbortSignal.timeout(3500) });
           if (res.ok) {
             const d = await res.json();
             if (d.data && d.data.length > 0) {
-              const match = d.data.find(item => isTrackMatch(item.title, title) && item.album && norm(item.album.title).includes(norm(album)));
+              const matches = d.data
+                .filter(item => isTrackMatch(item.title, title) && item.album && norm(item.album.title).includes(norm(album)))
+                .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
+              const match = matches[0];
               if (match) {
                 if (match.explicit_lyrics || match.explicit_content_lyrics === 1) {
                   meta.isExplicit = true;
@@ -156,8 +235,9 @@ class CoverService {
                   } catch (e) {}
                 }
                 if (meta.coverUrl) {
-                  this.memoryCache.set(cacheKey, meta);
-                  return meta;
+                  const finalized = this.finalizeMeta(meta, title, artist);
+                  this.memoryCache.set(cacheKey, finalized);
+                  return finalized;
                 }
               }
             }
@@ -168,11 +248,14 @@ class CoverService {
       // 2. Fallback: Deezer with title + artist
       try {
         const q = encodeURIComponent(`${cleanedSearchTitle} ${artist}`);
-        const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=5`, { signal: AbortSignal.timeout(3500) });
+        const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=8`, { signal: AbortSignal.timeout(3500) });
         if (res.ok) {
           const d = await res.json();
           if (d.data && d.data.length > 0) {
-            const match = d.data.find(item => isTrackMatch(item.title, title));
+            const matches = d.data
+              .filter(item => isTrackMatch(item.title, title))
+              .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
+            const match = matches[0];
             if (match) {
               if (match.explicit_lyrics || match.explicit_content_lyrics === 1) {
                 meta.isExplicit = true;
@@ -196,8 +279,9 @@ class CoverService {
                 } catch (e) {}
               }
               if (meta.coverUrl) {
-                this.memoryCache.set(cacheKey, meta);
-                return meta;
+                const finalized = this.finalizeMeta(meta, title, artist);
+                this.memoryCache.set(cacheKey, finalized);
+                return finalized;
               }
             }
           }
@@ -211,11 +295,14 @@ class CoverService {
         if (album) {
           try {
             const q = encodeURIComponent(`${cleanedSearchTitle} ${artist} ${album}`);
-            const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=5`, { signal: AbortSignal.timeout(3500) });
+            const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=8`, { signal: AbortSignal.timeout(3500) });
             if (res.ok) {
               const d = await res.json();
               if (d.results && d.results.length > 0) {
-                const match = d.results.find(item => isTrackMatch(item.trackName, title) && norm(item.collectionName).includes(norm(album)));
+                const matches = d.results
+                  .filter(item => isTrackMatch(item.trackName, title) && norm(item.collectionName).includes(norm(album)))
+                  .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
+                const match = matches[0];
                 if (match) {
                   if (match.trackExplicitness === 'explicit' || match.collectionExplicitness === 'explicit') {
                     meta.isExplicit = true;
@@ -237,8 +324,9 @@ class CoverService {
                     }
                   }
                   if (meta.coverUrl) {
-                    this.memoryCache.set(cacheKey, meta);
-                    return meta;
+                    const finalized = this.finalizeMeta(meta, title, artist);
+                    this.memoryCache.set(cacheKey, finalized);
+                    return finalized;
                   }
                 }
               }
@@ -249,11 +337,14 @@ class CoverService {
         // 3b. iTunes with title + artist
         try {
           const q = encodeURIComponent(`${cleanedSearchTitle} ${artist}`);
-          const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=5`, { signal: AbortSignal.timeout(3500) });
+          const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=8`, { signal: AbortSignal.timeout(3500) });
           if (res.ok) {
             const d = await res.json();
             if (d.results && d.results.length > 0) {
-              const match = d.results.find(item => isTrackMatch(item.trackName, title));
+              const matches = d.results
+                .filter(item => isTrackMatch(item.trackName, title))
+                .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
+              const match = matches[0];
               if (match) {
                 if (match.trackExplicitness === 'explicit' || match.collectionExplicitness === 'explicit') {
                   meta.isExplicit = true;
@@ -275,8 +366,9 @@ class CoverService {
                   }
                 }
                 if (meta.coverUrl) {
-                  this.memoryCache.set(cacheKey, meta);
-                  return meta;
+                  const finalized = this.finalizeMeta(meta, title, artist);
+                  this.memoryCache.set(cacheKey, finalized);
+                  return finalized;
                 }
               }
             }
@@ -287,16 +379,9 @@ class CoverService {
       console.warn('Metadata fetch error:', e.message);
     }
 
-    if (!meta.artist || meta.artist === artist) {
-      const feat = extractFeaturedFromTitle(title);
-      if (feat) {
-        meta.artist = combineArtists(artist, feat);
-      }
-    }
-    meta.artist = meta.artist || artist;
-
-    this.memoryCache.set(cacheKey, meta);
-    return meta;
+    const finalized = this.finalizeMeta(meta, title, artist);
+    this.memoryCache.set(cacheKey, finalized);
+    return finalized;
   }
 
   async fetchCoverUrl(title, artist, album = '') {
@@ -310,5 +395,7 @@ module.exports = {
   extractFeaturedFromTitle,
   cleanTitle,
   combineArtists,
-  mergeContributors
+  mergeContributors,
+  scoreTrackCandidate,
+  norm
 };

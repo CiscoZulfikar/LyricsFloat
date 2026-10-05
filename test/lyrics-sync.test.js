@@ -252,6 +252,47 @@ async function runTests() {
   assert.strictEqual(raceEngine.pendingTranslations, null, 'pendingTranslations should be cleared after being consumed');
   raceEngine.destroy();
 
+  // 14. Instrumental break activation & sync tests
+  const breakTest = createMockContainer();
+  breakTest.addElement(0, 0, 30);
+  breakTest.addElement(1, 40, 24); // Break line at index 1
+  breakTest.addElement(2, 70, 40);
+
+  const breakEngine = new LyricsSyncEngine(breakTest.container);
+  breakEngine.lines = [
+    { timeMs: 0, text: 'First verse', isBreak: false },
+    { timeMs: 15000, text: '', isBreak: true },
+    { timeMs: 35000, text: 'Second verse', isBreak: false }
+  ];
+  breakEngine.durationMs = 60000;
+
+  // During first verse at 5s
+  breakEngine.syncPosition(5000);
+  assert.strictEqual(breakEngine.activeIndex, 0);
+
+  // During instrumental break at 20s
+  breakEngine.syncPosition(20000);
+  assert.strictEqual(breakEngine.activeIndex, 1, 'Instrumental break must be active index at 20s');
+  assert.strictEqual(breakTest.elements.get(1).classList.contains('active'), true, 'Break line must have active class');
+
+  // Next verse starts at 35s
+  breakEngine.syncPosition(36000);
+  assert.strictEqual(breakEngine.activeIndex, 2, 'Second verse must be active index at 36s');
+  assert.strictEqual(breakTest.elements.get(1).classList.contains('active'), false, 'Break line must lose active class');
+  assert.strictEqual(breakTest.elements.get(2).classList.contains('active'), true);
+  breakEngine.destroy();
+
+  // 15. Instrumental break DOM rendering test
+  const domBreakEngine = new LyricsSyncEngine(createMockContainer().container);
+  domBreakEngine.loadLyrics({
+    lines: [
+      { timeMs: 0, text: '', isBreak: true },
+      { timeMs: 15000, text: 'Verse 1', isBreak: false }
+    ]
+  });
+  assert.strictEqual(domBreakEngine.lines[0].isBreak, true);
+  domBreakEngine.destroy();
+
   console.log('All LyricsSyncEngine tests passed successfully!');
 }
 

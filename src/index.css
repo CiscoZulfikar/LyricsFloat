@@ -716,6 +716,11 @@ body, html {
   animation: lyricsContentFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* State 3: Seamless continuous album / suite transition (zero vertical jump, subtle in-place crossfade) */
+.lyrics-stream.lyrics-seamless-enter {
+  animation: lyricsSeamlessCrossFade 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @keyframes lyricsStateFadeIn {
   0% {
     opacity: 0;
@@ -735,6 +740,15 @@ body, html {
   100% {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes lyricsSeamlessCrossFade {
+  0% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
   }
 }
 
@@ -847,6 +861,69 @@ body, html {
   font-weight: 400;
   color: var(--translation-color);
   opacity: 0.85;
+}
+
+/* Instrumental Interlude / Break Indicator */
+.lyric-line.lyric-break {
+  min-height: 24px;
+  padding: 8px 12px;
+  opacity: 0.28;
+  cursor: default;
+}
+
+.lyric-line.lyric-break:hover {
+  opacity: 0.50;
+  background: transparent;
+}
+
+.lyric-line.lyric-break .lyric-break-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 16px;
+}
+
+.lyric-line.lyric-break .lyric-break-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 0.35s ease, background 0.35s ease, opacity 0.35s ease;
+}
+
+.lyric-line.lyric-break.active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.lyric-line.lyric-break.active .lyric-break-dots span {
+  background: var(--accent-primary, #60a5fa);
+  box-shadow: 0 0 12px var(--accent-glow, rgba(96, 165, 250, 0.5));
+  animation: breakDotPulse 2.6s infinite ease-in-out both;
+}
+
+.lyric-line.lyric-break.active .lyric-break-dots span:nth-child(1) {
+  animation-delay: -0.6s;
+}
+
+.lyric-line.lyric-break.active .lyric-break-dots span:nth-child(2) {
+  animation-delay: -0.3s;
+}
+
+.lyric-line.lyric-break.active .lyric-break-dots span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes breakDotPulse {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
 }
 
 
@@ -1141,19 +1218,48 @@ body, html {
   );
   gap: 2px;
   z-index: 2;
-  pointer-events: none;
-  animation: artworkMetaSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  pointer-events: auto;
+  cursor: default;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
 }
 
-@keyframes artworkMetaSlideUp {
-  0% {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.artwork-modal-meta.peek-hint,
+.artwork-modal-meta:hover,
+.artwork-modal-meta:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Subtle Themed Artwork Hint Pill */
+.artwork-modal-hint-pill {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 3.5px;
+  border-radius: 9999px;
+  background: var(--accent-primary, rgba(255, 255, 255, 0.75));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.7), 0 0 8px var(--accent-glow, rgba(255, 255, 255, 0.3));
+  opacity: 0.60;
+  z-index: 1;
+  pointer-events: none;
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.artwork-modal-meta.peek-hint ~ .artwork-modal-hint-pill,
+.artwork-modal-meta:hover ~ .artwork-modal-hint-pill,
+.artwork-modal-meta:focus-within ~ .artwork-modal-hint-pill,
+.artwork-modal-container:has(.artwork-modal-meta.peek-hint) .artwork-modal-hint-pill,
+.artwork-modal-container:has(.artwork-modal-meta:hover) .artwork-modal-hint-pill {
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px) scale(0.85);
 }
 
 .artwork-modal-album-container,

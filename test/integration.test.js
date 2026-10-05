@@ -73,9 +73,11 @@ async function runIntegration() {
 [03:20.00]Owari no kashi`;
 
   const parsedMultiPass = lyricsService.parseLrc(multiPassLrc, 'アイドル', 'YOASOBI');
-  assert.strictEqual(parsedMultiPass.length, 4, 'Multi-pass CJK LRC should discard appended Romaji pass');
-  assert.strictEqual(parsedMultiPass[0].text, '無敵の笑顔で荒らすメディア');
-  assert.strictEqual(parsedMultiPass[2].text, '抜けてるとこさえ彼女のエリア');
+  const textLines = parsedMultiPass.filter(l => !l.isBreak);
+  assert.strictEqual(textLines.length, 4, 'Multi-pass CJK LRC should discard appended Romaji pass');
+  assert.strictEqual(textLines[0].text, '無敵の笑顔で荒らすメディア');
+  assert.strictEqual(textLines[2].text, '抜けてるとこさえ彼女のエリア');
+  assert.ok(parsedMultiPass.some(l => l.isBreak), 'Long 3-minute gap should have instrumental break');
 
   const interleavedLrc = `[00:01.00]無敵の笑顔で荒らすメディア
 [00:01.00]Muteki no egao de arasu media

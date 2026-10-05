@@ -1,5 +1,6 @@
 const { TransliterationService, normalizeHomoglyphs } = require('./transliteration');
 const { TranslationService } = require('./translation');
+const { normalizePunctuation, SPANISH_MARKERS } = require('./lyrics-service');
 
 const DEFAULT_TRANSLATE_LANGS = [
   'en', 'ja', 'ko', 'zh', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'id', 'el', 'hi', 'ar'
@@ -116,10 +117,11 @@ class LyricsEnricher {
       return null;
     }
 
-    // Sanitize confusable homoglyphs on all incoming lines
+    // Sanitize confusable homoglyphs and stray non-Spanish punctuation on all incoming lines
+    const isSongSpanish = SPANISH_MARKERS.test(title || '') || SPANISH_MARKERS.test(artist || '');
     rawLyrics.lines.forEach(l => {
-      if (l.text) l.text = normalizeHomoglyphs(l.text);
-      if (l.original) l.original = normalizeHomoglyphs(l.original);
+      if (l.text) l.text = normalizePunctuation(normalizeHomoglyphs(l.text), isSongSpanish);
+      if (l.original) l.original = normalizePunctuation(normalizeHomoglyphs(l.original), isSongSpanish);
     });
 
     const activeEnabledLangs = Array.isArray(enabledLanguages) ? enabledLanguages : DEFAULT_TRANSLATE_LANGS;
@@ -249,7 +251,8 @@ class LyricsEnricher {
         timeMs: l.timeMs,
         original: origText,
         romaji: romajiText,
-        translation: ''
+        translation: '',
+        isBreak: Boolean(l.isBreak)
       };
     });
 

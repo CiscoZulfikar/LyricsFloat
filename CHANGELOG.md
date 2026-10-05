@@ -6,6 +6,27 @@ All notable changes to LyricsFloat will be documented in this file.
 
 ## Version 1.2
 
+### [1.2.2] - 2026-10-05 (`261005`)
+
+#### ✨ What's New
+- **Continuous Suite & Album Transitions:** Smooth, zero-flash transitions for continuous songs and consecutive album tracks (e.g. The Weeknd - *"Baptized in Fear"* → *"Open Hearts"*), crossfading directly into the next track's lyrics without loading flicker.
+- **Compound Medley Splitting & Stitching:** Automatically splits combined tracks (e.g. *"Holiday / Boulevard of Broken Dreams"*) to fetch and stitch synchronized lyrics with duration offsets.
+- **Instrumental Breaks & Solos (`•••`):** Extended musical breaks, solos, and long intros now display an ambient, gently pulsing 3-dot indicator matching your theme accent.
+- **Micro-Break Filtering:** Brief pauses and line-clears under 6s are automatically suppressed to keep vocals smooth and eliminate frequent 3-dot popups.
+- **Artwork Peek Hint & Themed Hint Pill:** Opening the artwork modal briefly previews the track details for 1.8 seconds before tucking away. A subtle, theme-reactive frosted pill at the bottom edge indicates the expandable info drawer, automatically fading out when the details expand.
+
+#### 🛠️ What's Been Modified
+- **Interactive Artwork Metadata on Hover:** The album and track details overlay in the full-size artwork modal now hides by default to keep album artwork completely unobstructed, smoothly animating into view when the cursor enters the bottom 33% of the artwork.
+
+#### 🐛 What's Been Fixed
+- **Multiple & Featured Artist Display:** Full artist credits (e.g. *"SZA, Travis Scott"*) now appear reliably across the header, artwork modal, and lyrics metadata.
+- **Accurate Album Cover Art:** Prioritized standard album releases over deluxe, repack, or solo variants (e.g. correctly showing the standard *SOS* ocean cover).
+- **Windows Terminal Output:** Fixed console logs stair-stepping diagonally across PowerShell by normalizing newlines to `\r\n`.
+- **Punctuation Normalization:** Cleans up community transcription artifacts like inverted question/exclamation marks (`¡`, `¿`) on non-Spanish songs.
+- **Continuous Songs Loading Screen Flicker:** Fixed an issue where continuous songs momentarily showed the "Loading lyrics..." screen even after the lyrics had already been displayed.
+
+---
+
 ### [1.2.1] - 2026-09-30 (`260930`)
 
 #### ✨ What's New

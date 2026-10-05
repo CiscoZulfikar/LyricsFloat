@@ -1,9 +1,22 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 
+// Ensure CRLF newlines on Windows to eliminate staircase output in PowerShell and Windows terminals
 if (process.platform === 'win32') {
-  try {
-    require('child_process').execSync('chcp 65001', { stdio: 'inherit' });
-  } catch {}
+  const normalizeCRLF = (origWrite) => (chunk, encoding, callback) => {
+    if (typeof chunk === 'string') {
+      chunk = chunk.replace(/(?<!\r)\n/g, '\r\n');
+    } else if (Buffer.isBuffer(chunk)) {
+      const enc = typeof encoding === 'string' ? encoding : 'utf8';
+      const str = chunk.toString(enc);
+      if (/(?<!\r)\n/.test(str)) {
+        chunk = Buffer.from(str.replace(/(?<!\r)\n/g, '\r\n'), enc);
+      }
+    }
+    return origWrite(chunk, encoding, callback);
+  };
+
+  process.stdout.write = normalizeCRLF(process.stdout.write.bind(process.stdout));
+  process.stderr.write = normalizeCRLF(process.stderr.write.bind(process.stderr));
 }
 
 const path = require('path');
@@ -11,7 +24,7 @@ const { ConfigStore } = require('./services/config-store');
 const { LyricsService } = require('./services/lyrics-service');
 const { LyricsEnricher } = require('./services/lyrics-enricher');
 const { MediaWatcher } = require('./services/media-watcher');
-const { CoverService } = require('./services/cover-service');
+const { CoverService, extractFeaturedFromTitle, combineArtists } = require('./services/cover-service');
 
 let mainWindow = null;
 const gotTheLock = app.requestSingleInstanceLock();
@@ -153,26 +166,29 @@ async function handleTrackChange(track) {
     clearTimeout(retryTimeout);
     retryTimeout = null;
   }
+  const feat = extractFeaturedFromTitle(track.title);
+  const initialArtist = feat ? combineArtists(track.artist, feat) : track.artist;
   currentTrack = { 
     title: track.title, 
-    artist: track.artist, 
+    artist: initialArtist, 
     album: track.album,
+    trackNumber: track.trackNumber || 0,
     durationMs: track.durationMs 
   };
   const trackKey = normalizeTrackKey(track.title, track.artist);
   currentTrackKey = trackKey;
   const targetLang = configStore.get('targetLanguage', 'en');
-  console.log(`[MediaWatcher] Track changed to: ${track.title} by ${track.artist} (req #${requestId})`);
+  console.log(`[MediaWatcher] Track changed to: ${track.title} by ${initialArtist} (req #${requestId})`);
 
   try {
     const [rawLyrics, metadata] = await Promise.all([
       lyricsService.fetchLyrics({
         title: track.title,
-        artist: track.artist,
+        artist: initialArtist,
         album: track.album,
         durationSec: track.durationMs ? track.durationMs / 1000 : 0
       }),
-      coverService.fetchTrackMetadata(track.title, track.artist, track.album)
+      coverService.fetchTrackMetadata(track.title, initialArtist, track.album)
     ]);
 
     // If another track change occurred while fetching, discard this stale result
@@ -184,7 +200,18 @@ async function handleTrackChange(track) {
     const coverUrl = metadata ? metadata.coverUrl : null;
     let isExplicit = metadata ? Boolean(metadata.isExplicit) : false;
     const albumName = track.album || (metadata ? metadata.album : '') || (rawLyrics ? rawLyrics.album : '') || '';
-    const fullArtist = (metadata && metadata.artist) || track.artist;
+
+    let fullArtist = initialArtist || '';
+    if (metadata && metadata.artist) {
+      const currentArtistCount = (initialArtist || '').split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i).length;
+      const metaArtistCount = (metadata.artist || '').split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i).length;
+      if (metaArtistCount >= currentArtistCount) {
+        fullArtist = metadata.artist;
+      }
+    }
+    if (feat) {
+      fullArtist = combineArtists(fullArtist, feat);
+    }
 
     if (currentTrack && normalizeTrackKey(currentTrack.title, currentTrack.artist) === trackKey) {
       currentTrack.artist = fullArtist;
@@ -304,17 +331,27 @@ app.whenReady().then(async () => {
   createWindow();
 
   mediaWatcher.on('track-change', (track) => {
+    const feat = extractFeaturedFromTitle(track.title);
+    const initialArtist = feat ? combineArtists(track.artist, feat) : track.artist;
     if (mainWindow && mainWindow.webContents) {
       mainWindow.webContents.send('track-changing', {
         title: track.title,
-        artist: track.artist,
-        album: track.album || ''
+        artist: initialArtist,
+        album: track.album || '',
+        trackNumber: track.trackNumber || 0,
+        positionMs: track.positionMs || 0,
+        durationMs: track.durationMs || 0
       });
     }
-    handleTrackChange(track);
+    handleTrackChange({ ...track, artist: initialArtist });
   });
 
   mediaWatcher.on('playback-state', (state) => {
+    state.trackNumber = state.trackNumber || (currentTrack && currentTrack.trackNumber) || 0;
+    const feat = extractFeaturedFromTitle(state.title);
+    if (feat) {
+      state.artist = combineArtists(state.artist, feat);
+    }
     const stateKey = normalizeTrackKey(state.title, state.artist);
 
     // Inherit enriched full artist credits if available

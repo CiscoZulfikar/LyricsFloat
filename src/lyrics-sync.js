@@ -179,7 +179,7 @@ class LyricsSyncEngine {
     return Array.isArray(this.lines) && this.lines.some(l => Boolean(l.translation && l.translation.trim()));
   }
 
-  loadLyrics(enrichedData) {
+  loadLyrics(enrichedData, options = {}) {
     if (this.loadingWatchdogTimeout) {
       clearTimeout(this.loadingWatchdogTimeout);
       this.loadingWatchdogTimeout = null;
@@ -244,6 +244,20 @@ class LyricsSyncEngine {
       lineDiv.dataset.index = idx;
       lineDiv.dataset.timeMs = line.timeMs;
 
+      // If line is an instrumental break or interlude
+      if (line.isBreak) {
+        lineDiv.classList.add('lyric-break');
+        const dotsDiv = document.createElement('div');
+        dotsDiv.className = 'lyric-break-dots';
+        dotsDiv.innerHTML = '<span></span><span></span><span></span>';
+        if (dotsDiv.setAttribute) {
+          dotsDiv.setAttribute('aria-label', 'Instrumental break');
+        }
+        lineDiv.appendChild(dotsDiv);
+        fragment.appendChild(lineDiv);
+        return;
+      }
+
       // 1. Dominant Original Lyric
       const origText = line.original || line.text || '';
       const origDiv = document.createElement('div');
@@ -297,9 +311,13 @@ class LyricsSyncEngine {
     this.container.appendChild(fragment);
 
     if (this.container && this.container.classList) {
-      this.container.classList.remove('lyrics-loading-enter', 'lyrics-track-switching', 'lyrics-loaded-enter', 'lyrics-fade-exit');
+      this.container.classList.remove('lyrics-loading-enter', 'lyrics-track-switching', 'lyrics-loaded-enter', 'lyrics-fade-exit', 'lyrics-seamless-enter');
       void this.container.offsetWidth;
-      this.container.classList.add('lyrics-loaded-enter');
+      if (options.isSeamless || options.isContinuous) {
+        this.container.classList.add('lyrics-seamless-enter');
+      } else {
+        this.container.classList.add('lyrics-loaded-enter');
+      }
     }
 
     // If opening mid-song, immediately jump to current line
