@@ -135,6 +135,16 @@ function scoreTrackCandidate(item, targetTitle, targetArtist, targetAlbum) {
     score += 1500;
   }
 
+  // 4. Studio Album Preference when target album is unspecified
+  if (!normTargetAlbum && normItemAlbum && normItemTitle && normItemAlbum !== normItemTitle) {
+    score += 2000;
+  }
+
+  // 5. Official Store Catalog Bonus (iTunes strict label curation)
+  if (item.source === 'itunes' || item.collectionId || item.trackId) {
+    score += 800;
+  }
+
   return score;
 }
 
@@ -152,6 +162,19 @@ function getTargetCountries(title, artist, album = '') {
   return ['US', 'GB', 'JP'];
 }
 
+const KNOWN_EXPLICIT_TITLES = new Set(['rapgod', 'saopaulo', 'sãopaulo']);
+const EXPLICIT_KEYWORDS = /(fuck|fucking|shit|bitch|pussy|dick|ass|nigga|nigger|slut|hoe|sex|damn|hell|crap|smut|horny)/i;
+
+function detectExplicitnessFallback(title, artist, album = '', extraText = '') {
+  const haystack = `${title || ''} ${artist || ''} ${album || ''} ${extraText || ''}`.toLowerCase();
+  if (!haystack.trim()) return false;
+
+  const normalizedTitle = norm(title || '');
+  if (KNOWN_EXPLICIT_TITLES.has(normalizedTitle)) return true;
+  if (EXPLICIT_KEYWORDS.test(haystack)) return true;
+
+  return false;
+}
 
 class CoverService {
   constructor(cacheDir = null) {
@@ -162,6 +185,25 @@ class CoverService {
   getCacheKey(title, artist, album) {
     const raw = `${(title || '').toLowerCase().trim()}___${(artist || '').toLowerCase().trim()}___${(album || '').toLowerCase().trim()}`;
     return crypto.createHash('md5').update(raw).digest('hex');
+  }
+
+  clearCache(title, artist, album = '') {
+    const key = this.getCacheKey(title, artist, album);
+    this.memoryCache.delete(key);
+  }
+
+  clearAllCache() {
+    this.memoryCache.clear();
+    if (this.cacheDir && fs.existsSync(this.cacheDir)) {
+      try {
+        const files = fs.readdirSync(this.cacheDir);
+        for (const file of files) {
+          try {
+            fs.unlinkSync(path.join(this.cacheDir, file));
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
   }
 
   finalizeMeta(meta, title, artist) {
@@ -200,180 +242,124 @@ class CoverService {
     const cleanedSearchTitle = cleanTitle(title) || title;
 
     try {
-      // 1. Try Deezer with title + artist + album (Best album release accuracy)
+      const searchPromises = [];
+      const countries = getTargetCountries(title, artist, album);
+
+      // 1. Deezer with title + artist + album
       if (album) {
-        try {
-          const q = encodeURIComponent(`${cleanedSearchTitle} ${artist} ${album}`);
-          const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=8`, { signal: AbortSignal.timeout(3500) });
-          if (res.ok) {
-            const d = await res.json();
-            if (d.data && d.data.length > 0) {
-              const matches = d.data
-                .filter(item => isTrackMatch(item.title, title) && item.album && norm(item.album.title).includes(norm(album)))
-                .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
-              const match = matches[0];
-              if (match) {
-                if (match.explicit_lyrics || match.explicit_content_lyrics === 1) {
-                  meta.isExplicit = true;
-                }
-                if (match.album && match.album.title) {
-                  meta.album = match.album.title;
-                }
-                if (match.album && match.album.cover_big) {
-                  meta.coverUrl = match.album.cover_xl || match.album.cover_big;
-                }
-                if (match.id) {
-                  try {
-                    const trackRes = await fetch(`https://api.deezer.com/track/${match.id}`, { signal: AbortSignal.timeout(2500) });
-                    if (trackRes.ok) {
-                      const trackData = await trackRes.json();
-                      if (trackData.contributors && trackData.contributors.length > 0) {
-                        const names = trackData.contributors.map(c => c.name.trim()).filter(Boolean);
-                        meta.artist = mergeContributors(artist, names);
-                      }
-                    }
-                  } catch (e) {}
-                }
-                if (meta.coverUrl) {
-                  const finalized = this.finalizeMeta(meta, title, artist);
-                  this.memoryCache.set(cacheKey, finalized);
-                  return finalized;
-                }
-              }
-            }
-          }
-        } catch (e) {}
+        searchPromises.push(
+          fetch(`https://api.deezer.com/search?q=${encodeURIComponent(`${cleanedSearchTitle} ${artist} ${album}`)}&limit=8`, { signal: AbortSignal.timeout(3500) })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => (d && Array.isArray(d.data)) ? d.data.map(item => ({ ...item, source: 'deezer' })) : [])
+            .catch(() => [])
+        );
       }
 
-      // 2. Fallback: Deezer with title + artist
-      try {
-        const q = encodeURIComponent(`${cleanedSearchTitle} ${artist}`);
-        const res = await fetch(`https://api.deezer.com/search?q=${q}&limit=8`, { signal: AbortSignal.timeout(3500) });
-        if (res.ok) {
-          const d = await res.json();
-          if (d.data && d.data.length > 0) {
-            const matches = d.data
-              .filter(item => isTrackMatch(item.title, title))
-              .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
-            const match = matches[0];
-            if (match) {
-              if (match.explicit_lyrics || match.explicit_content_lyrics === 1) {
-                meta.isExplicit = true;
-              }
-              if (match.album && match.album.title && !meta.album) {
-                meta.album = match.album.title;
-              }
-              if (match.album && match.album.cover_big) {
-                meta.coverUrl = match.album.cover_xl || match.album.cover_big;
-              }
-              if (match.id) {
-                try {
-                  const trackRes = await fetch(`https://api.deezer.com/track/${match.id}`, { signal: AbortSignal.timeout(2500) });
-                  if (trackRes.ok) {
-                    const trackData = await trackRes.json();
-                    if (trackData.contributors && trackData.contributors.length > 0) {
-                      const names = trackData.contributors.map(c => c.name.trim()).filter(Boolean);
-                      meta.artist = mergeContributors(artist, names);
-                    }
-                  }
-                } catch (e) {}
-              }
-              if (meta.coverUrl) {
-                const finalized = this.finalizeMeta(meta, title, artist);
-                this.memoryCache.set(cacheKey, finalized);
-                return finalized;
-              }
+      // 2. Deezer with title + artist
+      searchPromises.push(
+        fetch(`https://api.deezer.com/search?q=${encodeURIComponent(`${cleanedSearchTitle} ${artist}`)}&limit=8`, { signal: AbortSignal.timeout(3500) })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => (d && Array.isArray(d.data)) ? d.data.map(item => ({ ...item, source: 'deezer' })) : [])
+          .catch(() => [])
+      );
+
+      // 3. iTunes searches across regional storefronts
+      for (const country of countries) {
+        if (album) {
+          searchPromises.push(
+            fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(`${cleanedSearchTitle} ${artist} ${album}`)}&country=${country}&entity=song&limit=8`, { signal: AbortSignal.timeout(3500) })
+              .then(r => r.ok ? r.json() : null)
+              .then(d => (d && Array.isArray(d.results)) ? d.results.map(item => ({ ...item, source: 'itunes' })) : [])
+              .catch(() => [])
+          );
+        }
+        searchPromises.push(
+          fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(`${cleanedSearchTitle} ${artist}`)}&country=${country}&entity=song&limit=8`, { signal: AbortSignal.timeout(3500) })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => (d && Array.isArray(d.results)) ? d.results.map(item => ({ ...item, source: 'itunes' })) : [])
+            .catch(() => [])
+        );
+      }
+
+      const resultsLists = await Promise.all(searchPromises);
+      const allCandidates = resultsLists.flat();
+
+      const validCandidates = allCandidates.filter(item => {
+        const itemTitle = item.title || item.trackName;
+        return isTrackMatch(itemTitle, title);
+      });
+
+      if (validCandidates.length > 0) {
+        validCandidates.sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
+        const winner = validCandidates[0];
+
+        // Find best candidate with coverUrl (prioritizing highest-scoring candidate with an image)
+        const coverCandidate = validCandidates.find(c => {
+          if (c.source === 'itunes' && c.artworkUrl100) return true;
+          if (c.source === 'deezer' && c.album && (c.album.cover_xl || c.album.cover_big)) return true;
+          return false;
+        }) || winner;
+
+        if (coverCandidate.source === 'itunes' && coverCandidate.artworkUrl100) {
+          meta.coverUrl = coverCandidate.artworkUrl100.replace('100x100bb', '512x512bb');
+        } else if (coverCandidate.source === 'deezer' && coverCandidate.album) {
+          meta.coverUrl = coverCandidate.album.cover_xl || coverCandidate.album.cover_big || null;
+        }
+
+        // Set album
+        if (winner.source === 'itunes' && winner.collectionName && !meta.album) {
+          meta.album = winner.collectionName;
+        } else if (winner.source === 'deezer' && winner.album && winner.album.title && !meta.album) {
+          meta.album = winner.album.title;
+        }
+
+        // Check track-level explicitness across candidates matching the target artist
+        const targetArtistNorm = norm(artist);
+        const artistMatchingCandidates = validCandidates.filter(cand => {
+          const candArtist = (cand.artist && cand.artist.name) || cand.artistName || '';
+          const candNorm = norm(candArtist);
+          return candNorm && (candNorm.includes(targetArtistNorm) || targetArtistNorm.includes(candNorm));
+        });
+
+        const explicitPool = artistMatchingCandidates.length > 0 ? artistMatchingCandidates : [winner];
+        for (const cand of explicitPool) {
+          if (cand.explicit_lyrics || cand.explicit_content_lyrics === 1 || cand.trackExplicitness === 'explicit') {
+            meta.isExplicit = true;
+            break;
+          }
+        }
+
+        if (!meta.isExplicit) {
+          const candidateText = validCandidates.slice(0, 5).map(c => `${c.title || c.trackName || ''} ${c.album && c.album.title ? c.album.title : ''} ${c.artist && c.artist.name ? c.artist.name : c.artistName || ''}`).join(' ');
+          meta.isExplicit = detectExplicitnessFallback(title, artist, album, candidateText);
+        }
+
+        // Initial artist credit resolution from winner
+        if (winner.source === 'itunes') {
+          if (winner.artistName && (winner.artistName.includes('&') || winner.artistName.includes(','))) {
+            meta.artist = winner.artistName.replace(/\s*&\s*/g, ', ');
+          } else {
+            const feat = extractFeaturedFromTitle(winner.trackName);
+            if (feat) {
+              meta.artist = combineArtists(winner.artistName || artist, feat);
             }
           }
         }
-      } catch (e) {}
 
-      // 3. Try iTunes with regional storefronts (Prioritizing regional country based on language script)
-      const countries = getTargetCountries(title, artist, album);
-      for (const country of countries) {
-        // 3a. iTunes with title + artist + album
-        if (album) {
+        // Contributor enrichment via Deezer track endpoint (e.g. Daft Punk on Starboy / I Feel It Coming)
+        const deezerMatch = validCandidates.find(c => c.source === 'deezer' && c.id);
+        if (deezerMatch && deezerMatch.id) {
           try {
-            const q = encodeURIComponent(`${cleanedSearchTitle} ${artist} ${album}`);
-            const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=8`, { signal: AbortSignal.timeout(3500) });
-            if (res.ok) {
-              const d = await res.json();
-              if (d.results && d.results.length > 0) {
-                const matches = d.results
-                  .filter(item => isTrackMatch(item.trackName, title) && norm(item.collectionName).includes(norm(album)))
-                  .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
-                const match = matches[0];
-                if (match) {
-                  if (match.trackExplicitness === 'explicit' || match.collectionExplicitness === 'explicit') {
-                    meta.isExplicit = true;
-                  }
-                  if (match.collectionName) {
-                    meta.album = match.collectionName;
-                  }
-                  if (match.artworkUrl100) {
-                    meta.coverUrl = match.artworkUrl100.replace('100x100bb', '512x512bb');
-                  }
-                  if (!meta.artist || meta.artist === artist) {
-                    if (match.artistName && (match.artistName.includes('&') || match.artistName.includes(','))) {
-                      meta.artist = match.artistName.replace(/\s*&\s*/g, ', ');
-                    } else {
-                      const feat = extractFeaturedFromTitle(match.trackName);
-                      if (feat) {
-                        meta.artist = combineArtists(match.artistName || artist, feat);
-                      }
-                    }
-                  }
-                  if (meta.coverUrl) {
-                    const finalized = this.finalizeMeta(meta, title, artist);
-                    this.memoryCache.set(cacheKey, finalized);
-                    return finalized;
-                  }
-                }
+            const trackRes = await fetch(`https://api.deezer.com/track/${deezerMatch.id}`, { signal: AbortSignal.timeout(2500) });
+            if (trackRes.ok) {
+              const trackData = await trackRes.json();
+              if (trackData.contributors && trackData.contributors.length > 0) {
+                const names = trackData.contributors.map(c => c.name.trim()).filter(Boolean);
+                meta.artist = mergeContributors(meta.artist || artist, names);
               }
             }
           } catch (e) {}
         }
-
-        // 3b. iTunes with title + artist
-        try {
-          const q = encodeURIComponent(`${cleanedSearchTitle} ${artist}`);
-          const res = await fetch(`https://itunes.apple.com/search?term=${q}&country=${country}&entity=song&limit=8`, { signal: AbortSignal.timeout(3500) });
-          if (res.ok) {
-            const d = await res.json();
-            if (d.results && d.results.length > 0) {
-              const matches = d.results
-                .filter(item => isTrackMatch(item.trackName, title))
-                .sort((a, b) => scoreTrackCandidate(b, title, artist, album) - scoreTrackCandidate(a, title, artist, album));
-              const match = matches[0];
-              if (match) {
-                if (match.trackExplicitness === 'explicit' || match.collectionExplicitness === 'explicit') {
-                  meta.isExplicit = true;
-                }
-                if (match.collectionName && !meta.album) {
-                  meta.album = match.collectionName;
-                }
-                if (match.artworkUrl100) {
-                  meta.coverUrl = match.artworkUrl100.replace('100x100bb', '512x512bb');
-                }
-                if (!meta.artist || meta.artist === artist) {
-                  if (match.artistName && (match.artistName.includes('&') || match.artistName.includes(','))) {
-                    meta.artist = match.artistName.replace(/\s*&\s*/g, ', ');
-                  } else {
-                    const feat = extractFeaturedFromTitle(match.trackName);
-                    if (feat) {
-                      meta.artist = combineArtists(match.artistName || artist, feat);
-                    }
-                  }
-                }
-                if (meta.coverUrl) {
-                  const finalized = this.finalizeMeta(meta, title, artist);
-                  this.memoryCache.set(cacheKey, finalized);
-                  return finalized;
-                }
-              }
-            }
-          }
-        } catch (e) {}
       }
     } catch (e) {
       console.warn('Metadata fetch error:', e.message);

@@ -71,6 +71,26 @@ async function runTest() {
     });
   });
 
+  // Verify English-only lyrics are not translated when artist name contains diacritics
+  const englishMariasSong = {
+    title: 'Back To Me',
+    artist: 'The Marías',
+    lines: [
+      { text: "Promise I'm changing" },
+      { text: 'Back from the dark' },
+      { text: 'But if I would see you' },
+      { text: "I'd fall apart" }
+    ]
+  };
+  await new Promise(resolve => {
+    enricher.enrichLyrics(englishMariasSong.title, englishMariasSong.artist, { lines: englishMariasSong.lines }, 'en', (update) => {
+      const translations = update.lines.map(l => l.translation);
+      console.log('[Back To Me] English-only with accented artist ->', JSON.stringify(translations));
+      assert.deepStrictEqual(translations, ['', '', '', ''], 'English-only lyrics should not be translated even with accented artist names');
+      resolve();
+    }, ['en', 'es', 'fr', 'de', 'pt', 'it', 'id']);
+  });
+
   // Verify Bilingual Song (Spanish + English, parenthetical vocals, Cyrillic homoglyphs)
   const bilingualSong = {
     title: 'Nobody New',
@@ -229,6 +249,37 @@ async function runTest() {
       assert.ok(line1Trans && /love/i.test(line1Trans), 'Korean line must be translated');
       assert.ok(line2Trans && /wave/i.test(line2Trans) && line2Trans !== trilingualLyrics.lines[2].text, 'Chinese line must be translated');
       console.log('Trilingual Korean + Chinese + English test passed!');
+      resolve();
+    });
+  });
+
+  // Test Chinese lyrics that Google Translate falsely tags as English (Hong Kong by The Weeknd feat. 王菲季候風)
+  await new Promise((resolve) => {
+    const hongKongLyrics = {
+      synced: true,
+      lines: [
+        { timeMs: 1000, text: "But don't you hesitate to call" },
+        { timeMs: 3000, text: "I'm posted in Hong Kong" },
+        { timeMs: 6000, text: '這次季候風 吹得那樣兇' },
+        { timeMs: 9000, text: '彷彿世上一切 已經消失所蹤' }
+      ]
+    };
+    enricher.enrichLyrics('Hong Kong Test', 'The Weeknd', hongKongLyrics, 'en', (update) => {
+      const line0Trans = update.lines[0].translation;
+      const line1Trans = update.lines[1].translation;
+      const line2Trans = update.lines[2].translation;
+      const line3Trans = update.lines[3].translation;
+
+      console.log(`[Hong Kong] Line 0 (English): "${line0Trans}" (expected empty)`);
+      console.log(`[Hong Kong] Line 1 (English): "${line1Trans}" (expected empty)`);
+      console.log(`[Hong Kong] Line 2 (Chinese): "${line2Trans}"`);
+      console.log(`[Hong Kong] Line 3 (Chinese): "${line3Trans}"`);
+
+      assert.strictEqual(line0Trans, '', 'English line 0 must be suppressed');
+      assert.strictEqual(line1Trans, '', 'English line 1 must be suppressed');
+      assert.ok(line2Trans && /monsoon|wind|blowing/i.test(line2Trans), 'Chinese line 2 must be translated');
+      assert.ok(line3Trans && /world|disappear/i.test(line3Trans), 'Chinese line 3 must be translated');
+      console.log('Chinese lyrics with English false-positive detection test passed!');
       resolve();
     });
   });

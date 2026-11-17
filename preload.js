@@ -25,7 +25,8 @@ contextBridge.exposeInMainWorld('lyricsFloatAPI', {
   seekPlayback: (positionMs) => ipcRenderer.invoke('seek-playback', positionMs),
   controlPlayback: (action) => ipcRenderer.invoke('control-playback', action),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  retryLyrics: () => ipcRenderer.invoke('retry-lyrics')
+  retryLyrics: () => ipcRenderer.invoke('retry-lyrics'),
+  clearCache: () => ipcRenderer.invoke('clear-cache')
 });
 
 

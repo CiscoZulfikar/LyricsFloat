@@ -30,9 +30,11 @@ function runTest() {
     console.log('No active allowed track currently playing (empty JSON received as expected).');
   }
 
-  // 3. Test fixCP437Mojibake correctly restores CP437 mojibake strings to original CJK
+  // 3. Test fixCP437Mojibake restores CP437 mojibake without altering valid names
   const { fixCP437Mojibake } = require('../services/media-watcher');
   assert.strictEqual(fixCP437Mojibake('σ╣│Φíîτ╖Ü'), '平行線', 'Must restore CP437 mojibake for 平行線');
+  assert.strictEqual(fixCP437Mojibake('Mar├¡as'), 'Marías', 'Must restore accented Latin names');
+  assert.strictEqual(fixCP437Mojibake('caf├⌐'), 'café', 'Must restore accented Latin names');
   assert.strictEqual(fixCP437Mojibake('Sayuri'), 'Sayuri', 'Normal Latin strings must remain unchanged');
   assert.strictEqual(fixCP437Mojibake('平行線'), '平行線', 'Proper Unicode CJK strings must remain unchanged');
   console.log('fixCP437Mojibake tests passed successfully!');

@@ -6,6 +6,29 @@ All notable changes to LyricsFloat will be documented in this file.
 
 ## Version 1.2
 
+### [1.2.3] - 2026-10-06 (`261006`)
+
+#### ✨ What's New
+- **Album-Aware Artwork Blurring:** When changing songs, the cover art softens with a subtle Gaussian blur to give a clear visual cue that it is loading until the new track's lyrics and artwork arrive. If the incoming track belongs to the same album as the previous song, the artwork remains crisp and unblurred.
+- **Persistent Disk Caching:** Cached lyrics are saved to disk in `cache/lyrics/`, providing near-instant lyrics loading on subsequent plays and app relaunches without hitting the network.
+- **Modular Data & Configuration Architecture:** Separated track registries, translation phrasebooks, theme lists, and release history into dedicated data files, making song behaviors, language nuance adjustments, and future additions faster and easier to maintain.
+- **Streamlined Changelog Experience:** Optimized the in-app changelog to load from external release records, keeping the interface lightweight and snappy.
+
+#### 🛠️ What's Been Modified
+- **Pipelined Independent Lyrics Delivery:** Lyrics delivery is no longer blocked by external Deezer/iTunes cover art requests; lyrics render immediately upon LRCLIB resolution (~200ms) while cover art updates asynchronously in the background.
+- **Rapid Skip In-Flight Cancellation:** Integrated `AbortController` to abort pending HTTP requests immediately when switching tracks, avoiding request backlogs and 429 rate limits during rapid song skipping.
+- **Clean Separation of Content and Engine Logic:** Continuous song suites and lyrics processing engines are now fully data-driven, allowing community-reported song transitions and nuance rules to be updated seamlessly without altering the core app logic.
+
+#### 🐛 Bug Fixes
+- **Accurate Explicit Badge Display:** Fixed clean songs (such as *"All I Really Want Is You"*) incorrectly showing the `[E]` badge.
+- **Chinese & Non-Latin Translation Detection:** Fixed Chinese lyrics (such as *"Hong Kong"*) failing to translate when the translation provider falsely reported the source language as English.
+- **Visual HTTP 503 Outage State:** Added a dedicated visual offline state when the lyrics provider is experiencing server downtime (503 Service Unavailable) with one-click retry.
+- **Mid-Song Lyrics Fetch & Rate-Limit Resilience:** Fixed an issue where launching the app or polling mid-song failed to load lyrics (resulting in *"Lyrics unavailable for this track"*). Added compliant LRCLIB User-Agent headers, automatic HTTP 429 backoff retry with `Retry-After` parsing, duration-agnostic query fallbacks, and capped background retries to eliminate infinite polling loops.
+- **Unicode Track Metadata Recovery:** Fixed CP437 mojibake recovery to restore accented Latin names as well as CJK names, so artist and track names such as *"The Marías"* remain intact.
+- **Album Artwork Blur Timing:** Keep the previous cover blurred until the incoming artwork has loaded and is applied; late image loads from an earlier track can no longer clear the blur.
+
+---
+
 ### [1.2.2] - 2026-10-05 (`261005`)
 
 #### ✨ What's New
@@ -48,7 +71,7 @@ All notable changes to LyricsFloat will be documented in this file.
 - **Click-to-Retry Unavailable Lyrics:** Made the *"Lyrics unavailable"* message interactively clickable with subtle hover feedback so users can instantly re-trigger lyrics retrieval anytime without restarting the app.
 - **Startup IPC Race Condition:** Moved renderer IPC event subscriptions prior to initial state retrieval, ensuring events emitted during window startup are never dropped.
 - **Rewind & Replay Lyrics Retention:** Fixed clicking the Previous button or rewinding the current track triggering an unnecessary "Loading lyrics..." state that timed out into "Lyrics unavailable".
-- **Terminal Mojibake on Windows:** Updated Windows startup script to automatically set UTF-8 console encoding (`chcp 65001`) and added CP437 mojibake reversal so Asian track titles log cleanly without character corruption.
+- **Terminal Mojibake on Windows:** Set the terminal to UTF-8 before Electron starts and added CP437 mojibake reversal so track titles and artist names—including accented Latin and Asian names—log cleanly without character corruption.
 - **Multi-Pass & Bilingual LRC Duplication:** Fixed multi-pass LRC files (such as YOASOBI's *"アイドル"* containing appended or interleaved Romaji sections) causing duplicate lines and orphaned Romaji active cards.
 - **Missing Translations on Multilingual Lines:** Fixed Chinese lines in multilingual tracks failing to translate or showing blank sub-text due to language code mismatches.
 - **Chinese Pinyin in Songs with Korean Verses:** Fixed Chinese lyrics being mistakenly treated as Korean Hanja in songs containing both Korean and Chinese, restoring instant **Pinyin** generation.

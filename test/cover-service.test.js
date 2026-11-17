@@ -37,6 +37,10 @@ async function runTests() {
   assert.strictEqual(metaExplicit2.isExplicit, true, 'Expected São Paulo to be marked explicit');
   console.log('✓ Bilingual explicit track correctly marked isExplicit=true');
 
+  const metaMarias = await service.fetchTrackMetadata('All I Really Want Is You', 'The Marías');
+  assert.strictEqual(metaMarias.isExplicit, false, 'Expected All I Really Want Is You by The Marías to be marked clean / not explicit');
+  console.log('✓ Track with substring matches on explicit albums correctly marked isExplicit=false');
+
   // Test 5: Helper function unit tests
   const { mergeContributors, extractFeaturedFromTitle, cleanTitle } = require('../services/cover-service');
   assert.strictEqual(mergeContributors('The Weeknd', ['The Weeknd', 'Daft Punk']), 'The Weeknd, Daft Punk');

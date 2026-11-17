@@ -212,6 +212,16 @@
               <label for="check-show-translation">Show Translated Meaning Sub-Text</label>
               <input type="checkbox" id="check-show-translation" checked>
             </div>
+            <div class="setting-item" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: #ffffff;">Lyrics & Cover Cache</div>
+                  <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">Clear saved lyrics, translations, and album covers</div>
+                </div>
+                <button type="button" id="btn-clear-cache" class="mini-btn danger-btn" style="padding: 4px 10px; font-size: 11px; white-space: nowrap; flex-shrink: 0;">Clear Cache</button>
+              </div>
+              <div id="clear-cache-status" style="font-size: 11px; margin-top: 6px; display: none; line-height: 1.3;"></div>
+            </div>
           </div>
 
           <!-- Tab 3: Translation -->
@@ -264,7 +274,7 @@
               <div class="about-info">
                 <div class="about-header-row">
                   <span class="about-app-title">LyricsFloat</span>
-                  <span class="about-badge">v1.2.2 (261005)</span>
+                  <span class="about-badge">v1.2.3 (261006)</span>
                 </div>
                 <span class="about-creator">Made by: <strong>ciszu</strong></span>
               </div>
@@ -313,9 +323,15 @@
     </div>
   </div>
 
+  <!-- External Configuration & Registries -->
+  <script src="../data/changelog-data.js"></script>
+  <script src="../data/continuous-suites.js"></script>
+  <script src="../data/themes.js"></script>
+
   <script src="changelog.js"></script>
   <script src="continuous-suites.js"></script>
   <script src="lyrics-sync.js"></script>
+  <script src="artwork-loader.js"></script>
   <script src="translation-pill.js"></script>
   <script src="marquee.js"></script>
   <script src="playback-controller.js"></script>

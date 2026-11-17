@@ -5,35 +5,33 @@
  */
 
 (function(root, factory) {
+  let suites = [];
   if (typeof module === 'object' && module.exports) {
-    const exported = factory();
+    try {
+      suites = require('../data/continuous-suites').VERIFIED_SUITES;
+    } catch (e) {}
+    const exported = factory(suites);
     module.exports = {
       ContinuousSuites: exported,
       ...exported
     };
   } else {
-    root.ContinuousSuites = factory();
+    suites = (root && root.VERIFIED_SUITES) || [];
+    root.ContinuousSuites = factory(suites);
   }
-}(typeof self !== 'undefined' ? self : this, function() {
-  const VERIFIED_SUITES = [
-    // The Weeknd - Hurry Up Tomorrow
-    { artist: 'the weeknd', from: 'baptized in fear', to: 'open hearts' },
-    // The Weeknd - Dawn FM
-    { artist: 'the weeknd', from: 'dawn fm', to: 'gasoline' },
-    { artist: 'the weeknd', from: 'best friends', to: 'is there someone else?' },
-    { artist: 'the weeknd', from: 'is there someone else?', to: 'starry eyes' },
-    // Pink Floyd - The Dark Side of the Moon
-    { artist: 'pink floyd', from: 'speak to me', to: 'breathe (in the air)' },
-    { artist: 'pink floyd', from: 'brain damage', to: 'eclipse' },
-    // Queen - News of the World
-    { artist: 'queen', from: 'we will rock you', to: 'we are the champions' },
-    // Linkin Park - Meteora
-    { artist: 'linkin park', from: 'foreword', to: "don't stay" },
-    // Green Day - American Idiot
-    { artist: 'green day', from: 'holiday', to: 'boulevard of broken dreams' },
-    // Swedish House Mafia - Paradise Again
-    { artist: 'swedish house mafia', from: "jacob's groove", to: 'mafia' }
-  ];
+}(typeof self !== 'undefined' ? self : this, function(injectedSuites) {
+  let suites = injectedSuites;
+  if (!suites || suites.length === 0) {
+    if (typeof require !== 'undefined') {
+      try {
+        suites = require('../data/continuous-suites').VERIFIED_SUITES;
+      } catch (e) {}
+    }
+  }
+  if ((!suites || suites.length === 0) && typeof self !== 'undefined' && self.VERIFIED_SUITES) {
+    suites = self.VERIFIED_SUITES;
+  }
+  const VERIFIED_SUITES = suites || [];
 
   function cleanTitle(str) {
     if (!str || typeof str !== 'string') return '';

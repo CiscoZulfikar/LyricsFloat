@@ -1,0 +1,26 @@
+[
+  {
+    "timeMs": 0,
+    "translation": "But don't you hesitate to call",
+    "detectedLang": "en",
+    "isPartiallyForeign": false
+  },
+  {
+    "timeMs": 3000,
+    "translation": "I'm posted in Hong Kong",
+    "detectedLang": "en",
+    "isPartiallyForeign": false
+  },
+  {
+    "timeMs": 6000,
+    "translation": "This monsoon is blowing so fiercely",
+    "detectedLang": "en",
+    "isPartiallyForeign": false
+  },
+  {
+    "timeMs": 9000,
+    "translation": "It seems like everything in the world has disappeared",
+    "detectedLang": "en",
+    "isPartiallyForeign": false
+  }
+]

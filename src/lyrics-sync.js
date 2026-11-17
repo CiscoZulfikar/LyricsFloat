@@ -117,7 +117,7 @@ class LyricsSyncEngine {
     }
   }
 
-  showLoading(title = '', artist = '', timeoutMs = 7000) {
+  showLoading(title = '', artist = '', timeoutMs = 10000) {
     if (this.loadingWatchdogTimeout) {
       clearTimeout(this.loadingWatchdogTimeout);
       this.loadingWatchdogTimeout = null;
@@ -166,6 +166,9 @@ class LyricsSyncEngine {
             }
           }
         }
+        if (this.onLoadingTimeout) {
+          this.onLoadingTimeout();
+        }
         this.loadingWatchdogTimeout = null;
       }, timeoutMs);
     }
@@ -204,22 +207,44 @@ class LyricsSyncEngine {
       this.isUserScrolling = false;
       if (this.onScrollDrift) this.onScrollDrift(true, 'down');
 
-      const isAlreadyUnavailable = this.container &&
+      const is503 = enrichedData && enrichedData.errorStatus === 503;
+      const expectedText = is503 ? 'Service temporarily unavailable (503)' : 'Lyrics unavailable for this track';
+
+      const isAlreadyMatching = this.container &&
         this.container.innerHTML &&
-        this.container.innerHTML.includes('Lyrics unavailable for this track') &&
+        this.container.innerHTML.includes(expectedText) &&
         !this.container.innerHTML.includes('lyrics-loading-state');
 
-      if (isAlreadyUnavailable) {
+      if (isAlreadyMatching) {
         return;
       }
 
       if (this.container) {
         this.container.scrollTop = 0;
-        this.container.innerHTML = `
-          <div class="lyrics-idle-message">
-            <div class="idle-pulse-ring"></div>
-            <span>Lyrics unavailable for this track</span>
-          </div>`;
+        if (is503) {
+          this.container.innerHTML = `
+            <div class="lyrics-idle-message lyrics-error-503" title="Click to retry">
+              <div class="idle-error-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 1l22 22"></path>
+                  <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                  <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                  <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+                  <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                  <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+              </div>
+              <div class="lyrics-error-title">Service temporarily unavailable (503)</div>
+              <div class="lyrics-error-subtitle">Lyrics provider is offline • Click to retry</div>
+            </div>`;
+        } else {
+          this.container.innerHTML = `
+            <div class="lyrics-idle-message">
+              <div class="idle-pulse-ring"></div>
+              <span>Lyrics unavailable for this track</span>
+            </div>`;
+        }
         if (this.container.classList) {
           this.container.classList.remove('lyrics-loaded-enter', 'lyrics-track-switching', 'lyrics-loading-enter', 'lyrics-fade-exit');
           void this.container.offsetWidth;

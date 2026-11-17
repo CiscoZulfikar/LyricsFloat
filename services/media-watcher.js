@@ -26,7 +26,7 @@ function fixCP437Mojibake(str) {
       }
     }
     const decoded = Buffer.from(bytes).toString('utf8');
-    if (!decoded.includes('\ufffd') && /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(decoded)) {
+    if (!decoded.includes('\ufffd') && /[^\x00-\x7f]/.test(decoded)) {
       return decoded;
     }
   } catch (e) {}

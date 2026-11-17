@@ -1,9 +1,12 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const CJK_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
 
 const SPANISH_MARKERS = /\b(estoy|estás|está|estamos|están|quiero|tengo|tienes|tiene|nadie|cuando|tiempo|siempre|corazón|noche|nada|vida|aqui|aquí|puedo|puedes|puede|tenerte|olvidarme|respirar|cuesta|entonces|despacito|cuello|deja|diga|cosas|oído|olha|yo|tú|él|ella|ellos|ellas|nosotros|usted|ustedes|nuestro|nuestra|pero|más|muy|bueno|buena|después|quién|decir|dice|dijo|hola|amigo|amiga|señor|señora|por favor|gracias)\b/i;
+
+const ASIAN_ROMAJI_MARKERS = /\b(ga|wo|ni|kara|made|shite|kimi|boku|watashi|anata|koto|desu|tte|seigi|shoumei|sekai|kokoro|hitori|futari|dakedo|zutto|motto|subete|yoru|yume|sarang|haeyo|neoreul|naneun|geudae)\b/gi;
 
 function normalizePunctuation(text, isSpanishContext = false) {
   if (!text || typeof text !== 'string') return text;
@@ -11,6 +14,57 @@ function normalizePunctuation(text, isSpanishContext = false) {
   if (SPANISH_MARKERS.test(text)) return text;
   return text.replace(/¡\s*/g, '').replace(/¿\s*/g, '');
 }
+
+const LRCLIB_USER_AGENT = 'LyricsFloat/1.2.3 (https://github.com/CiscoZulfikar/LyricsFloat)';
+const LRCLIB_HEADERS = {
+  'User-Agent': LRCLIB_USER_AGENT,
+  'Lrclib-Client': LRCLIB_USER_AGENT
+};
+
+let rateLimitUntil = 0;
+
+async function fetchLrclib(url, timeoutMs = 6000, maxRetries = 2, externalSignal = null) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (externalSignal && externalSignal.aborted) return null;
+
+    // Respect active rate-limit backoff window across all concurrent/subsequent calls
+    const now = Date.now();
+    if (rateLimitUntil > now) {
+      const waitMs = Math.min(2500, rateLimitUntil - now);
+      await new Promise(r => setTimeout(r, waitMs));
+      if (externalSignal && externalSignal.aborted) return null;
+    }
+
+    try {
+      const timeoutSignal = AbortSignal.timeout(timeoutMs);
+      const signal = externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
+      const res = await fetch(url, {
+        headers: LRCLIB_HEADERS,
+        signal
+      });
+      if (res && res.status === 429) {
+        const retryHeader = res.headers && typeof res.headers.get === 'function' ? res.headers.get('retry-after') : null;
+        const retrySec = retryHeader ? Math.max(1, parseInt(retryHeader, 10)) : 1;
+        rateLimitUntil = Date.now() + (retrySec * 1000) + 200;
+        if (attempt < maxRetries && (!externalSignal || !externalSignal.aborted)) {
+          const waitMs = (retrySec * 1000) + 200;
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+      }
+      return res;
+    } catch (e) {
+      if (externalSignal && externalSignal.aborted) return null;
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 400));
+        continue;
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
 
 
 function scoreCandidate(item, title, artist, album, targetDurationSec) {
@@ -98,6 +152,7 @@ class LyricsService {
   constructor(cacheDir = null) {
     this.cacheDir = cacheDir || path.join(process.cwd(), 'cache', 'lyrics');
     this.memoryCache = new Map();
+    this.lastErrorStatus = null;
   }
 
   parseLrc(lrcText, title = '', artist = '', durationSec = 0) {
@@ -304,6 +359,32 @@ class LyricsService {
     return `${(title || '').toLowerCase().trim()}___${(artist || '').toLowerCase().trim()}`;
   }
 
+  getDiskCachePath(cacheKey) {
+    const hash = crypto.createHash('md5').update(cacheKey).digest('hex');
+    return path.join(this.cacheDir, `${hash}.json`);
+  }
+
+  readFromDisk(cacheKey) {
+    try {
+      const filePath = this.getDiskCachePath(cacheKey);
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf8');
+        return JSON.parse(raw);
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  writeToDisk(cacheKey, data) {
+    try {
+      if (!fs.existsSync(this.cacheDir)) {
+        fs.mkdirSync(this.cacheDir, { recursive: true });
+      }
+      const filePath = this.getDiskCachePath(cacheKey);
+      fs.writeFileSync(filePath, JSON.stringify(data), 'utf8');
+    } catch (e) {}
+  }
+
   splitCompoundTitle(title) {
     if (!title || typeof title !== 'string') return [];
     // Only split on explicit delimiters: slash, backslash, en-dash, em-dash, or hyphen surrounded by spaces
@@ -316,48 +397,45 @@ class LyricsService {
 
   async queryTrackLyrics(trackTitle, trackArtist, trackAlbum, durationSec = 0) {
     if (!trackTitle || !trackArtist) return null;
-    try {
-      const params = new URLSearchParams({
-        track_name: trackTitle,
-        artist_name: trackArtist
-      });
-      if (trackAlbum) params.append('album_name', trackAlbum);
-      if (durationSec) params.append('duration', Math.round(durationSec));
 
-      const res = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
-        headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
-        signal: AbortSignal.timeout(6000)
-      });
-      if (res.status === 200) {
-        const exact = await res.json();
-        if (exact && exact.syncedLyrics) return exact;
-      } else if (res.status === 404) {
-        const primaryArtist = trackArtist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
-        if (primaryArtist && primaryArtist.toLowerCase() !== trackArtist.toLowerCase()) {
-          const fallbackParams = new URLSearchParams({
-            track_name: trackTitle,
-            artist_name: primaryArtist
-          });
-          if (trackAlbum) fallbackParams.append('album_name', trackAlbum);
-          if (durationSec) fallbackParams.append('duration', Math.round(durationSec));
-          const fallbackRes = await fetch(`https://lrclib.net/api/get?${fallbackParams.toString()}`, {
-            headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
-            signal: AbortSignal.timeout(5000)
-          });
-          if (fallbackRes.status === 200) {
-            const fallbackExact = await fallbackRes.json();
-            if (fallbackExact && fallbackExact.syncedLyrics) return fallbackExact;
-          }
+    const tryGet = async (title, artist, album, dur) => {
+      try {
+        const params = new URLSearchParams({
+          track_name: title,
+          artist_name: artist
+        });
+        if (album) params.append('album_name', album);
+        if (dur) params.append('duration', Math.round(dur));
+
+        const res = await fetchLrclib(`https://lrclib.net/api/get?${params.toString()}`, 6000);
+        if (res && res.status === 200) {
+          const exact = await res.json();
+          if (exact && (exact.syncedLyrics || exact.plainLyrics)) return exact;
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+      return null;
+    };
 
+    // 1. Try exact with duration and album
+    let exact = await tryGet(trackTitle, trackArtist, trackAlbum, durationSec);
+    // 2. Discrepancy fallback: try without duration
+    if (!exact && durationSec) {
+      exact = await tryGet(trackTitle, trackArtist, trackAlbum, 0);
+    }
+    // 3. Fallback: primary artist
+    const primaryArtist = trackArtist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
+    if (!exact && primaryArtist && primaryArtist.toLowerCase() !== trackArtist.toLowerCase()) {
+      exact = await tryGet(trackTitle, primaryArtist, trackAlbum, durationSec);
+      if (!exact && durationSec) {
+        exact = await tryGet(trackTitle, primaryArtist, trackAlbum, 0);
+      }
+    }
+    if (exact && exact.syncedLyrics) return exact;
+
+    // Search fallback
     try {
-      const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${trackTitle} ${trackArtist}`)}`, {
-        headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
-        signal: AbortSignal.timeout(6000)
-      });
-      if (searchRes.ok) {
+      const searchRes = await fetchLrclib(`https://lrclib.net/api/search?q=${encodeURIComponent(`${trackTitle} ${trackArtist}`)}`, 6000);
+      if (searchRes && searchRes.ok) {
         const list = await searchRes.json();
         if (Array.isArray(list) && list.length > 0) {
           list.sort((a, b) => scoreCandidate(b, trackTitle, trackArtist, trackAlbum, durationSec) - scoreCandidate(a, trackTitle, trackArtist, trackAlbum, durationSec));
@@ -419,70 +497,136 @@ class LyricsService {
     if (title && artist) {
       const key = this.getCacheKey(title, artist);
       this.memoryCache.delete(key);
+      try {
+        const filePath = this.getDiskCachePath(key);
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch (e) {}
     }
   }
 
-  async fetchLyrics({ title, artist, album, durationSec }) {
+  clearAllCache() {
+    this.memoryCache.clear();
+    if (this.cacheDir && fs.existsSync(this.cacheDir)) {
+      try {
+        const files = fs.readdirSync(this.cacheDir);
+        for (const file of files) {
+          try {
+            fs.unlinkSync(path.join(this.cacheDir, file));
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+  }
+
+  async fetchLyrics({ title, artist, album, durationSec, signal = null }) {
     if (!title || !artist) return null;
+    if (signal && signal.aborted) return null;
+    this.lastErrorStatus = null;
     const cacheKey = this.getCacheKey(title, artist);
 
     if (this.memoryCache.has(cacheKey)) {
       return this.memoryCache.get(cacheKey);
     }
+    const fromDisk = this.readFromDisk(cacheKey);
+    if (fromDisk) {
+      this.memoryCache.set(cacheKey, fromDisk);
+      return fromDisk;
+    }
 
     let data = null;
 
-    // 1. Try exact get with isolated error handling and 7s timeout
-    try {
-      const params = new URLSearchParams({
-        track_name: title,
-        artist_name: artist
-      });
-      if (album) params.append('album_name', album);
-      if (durationSec) params.append('duration', Math.round(durationSec));
+    const tryExactGet = async (t, a, alb, dur) => {
+      if (signal && signal.aborted) return null;
+      try {
+        const params = new URLSearchParams({
+          track_name: t,
+          artist_name: a
+        });
+        if (alb) params.append('album_name', alb);
+        if (dur) params.append('duration', Math.round(dur));
 
-      const url = `https://lrclib.net/api/get?${params.toString()}`;
-      const res = await fetch(url, { 
-        headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
-        signal: AbortSignal.timeout(7000)
-      });
+        const url = `https://lrclib.net/api/get?${params.toString()}`;
+        const res = await fetchLrclib(url, 5000, 1, signal);
+        if (res && res.status === 200) {
+          return await res.json();
+        } else if (res && res.status >= 400 && res.status !== 404) {
+          this.lastErrorStatus = res.status;
+        }
+      } catch (e) {
+        console.warn(`[LyricsService] exact get warning: ${e.message}`);
+      }
+      return null;
+    };
 
-      if (res.status === 200) {
-        data = await res.json();
-      } else if (res.status === 404) {
-        const primaryArtist = artist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
-        if (primaryArtist && primaryArtist.toLowerCase() !== artist.toLowerCase()) {
-          const fallbackParams = new URLSearchParams({
-            track_name: title,
-            artist_name: primaryArtist
-          });
-          if (album) fallbackParams.append('album_name', album);
-          if (durationSec) fallbackParams.append('duration', Math.round(durationSec));
-          const fallbackRes = await fetch(`https://lrclib.net/api/get?${fallbackParams.toString()}`, {
-            headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
-            signal: AbortSignal.timeout(5000)
-          });
-          if (fallbackRes.status === 200) {
-            data = await fallbackRes.json();
+    // Parallel exact-get candidate dispatch
+    const primaryArtist = artist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
+
+    // 1. Try primary exact get with duration and album first
+    data = await tryExactGet(title, artist, album, durationSec);
+
+    // If primary exact didn't return synced lyrics, run all fallbacks concurrently in parallel
+    if (!data || !data.syncedLyrics) {
+      const fallbackCalls = [];
+
+      // Duration discrepancy fallback (mid-song launch or player duration delta)
+      if (durationSec && album) {
+        fallbackCalls.push({ priority: 2, fn: () => tryExactGet(title, artist, album, 0) });
+      }
+
+      // Album mismatch fallback (retry without album)
+      if (album) {
+        fallbackCalls.push({ priority: 3, fn: () => tryExactGet(title, artist, '', durationSec) });
+        if (durationSec) {
+          fallbackCalls.push({ priority: 4, fn: () => tryExactGet(title, artist, '', 0) });
+        }
+      } else if (durationSec) {
+        fallbackCalls.push({ priority: 2, fn: () => tryExactGet(title, artist, '', 0) });
+      }
+
+      // Primary artist fallback
+      if (primaryArtist && primaryArtist.toLowerCase() !== artist.toLowerCase()) {
+        fallbackCalls.push({ priority: 5, fn: () => tryExactGet(title, primaryArtist, '', durationSec) });
+        if (durationSec) {
+          fallbackCalls.push({ priority: 6, fn: () => tryExactGet(title, primaryArtist, '', 0) });
+        }
+      }
+
+      if (fallbackCalls.length > 0) {
+        const fallbackResults = await Promise.all(
+          fallbackCalls.map(async (c) => {
+            const res = await c.fn();
+            return res ? { priority: c.priority, data: res } : null;
+          })
+        );
+
+        const validFallbacks = fallbackResults.filter(Boolean);
+        if (validFallbacks.length > 0) {
+          const syncedCandidates = validFallbacks.filter(r => r.data && r.data.syncedLyrics);
+          if (syncedCandidates.length > 0) {
+            syncedCandidates.sort((a, b) => a.priority - b.priority);
+            data = syncedCandidates[0].data;
+          } else if (!data) {
+            validFallbacks.sort((a, b) => a.priority - b.priority);
+            data = validFallbacks[0].data;
           }
         }
       }
-    } catch (exactErr) {
-      console.warn(`[LyricsService] exact get warning: ${exactErr.message}`);
     }
 
     // Exact get evaluation:
+    const queryHasCJK = CJK_REGEX.test(title || '') || CJK_REGEX.test(artist || '') || CJK_REGEX.test(album || '');
     const exactHasSynced = data && Boolean(data.syncedLyrics);
     const exactHasCJK = exactHasSynced && CJK_REGEX.test(data.syncedLyrics);
+    const exactLyricsText = data ? (data.syncedLyrics || data.plainLyrics || '') : '';
+    const exactHasAsianRomaji = Boolean(exactLyricsText) && (exactLyricsText.match(new RegExp(ASIAN_ROMAJI_MARKERS.source, 'gi')) || []).length >= 2;
 
     // Search if:
     // 1. Exact get didn't return synced lyrics (or failed completely), OR
-    // 2. Exact get only had romaji/latin lyrics, to discover if native CJK lyrics exist
-    const needsSearch = !exactHasSynced || !exactHasCJK;
+    // 2. Query has CJK or exact get lyrics are Romanized Asian lyrics, but exact get only had romaji/latin (to discover native CJK script)
+    const needsSearch = !exactHasSynced || (!exactHasCJK && (queryHasCJK || exactHasAsianRomaji));
 
     if (needsSearch) {
       // Build search queries: primary query and fallback cleaned title query if applicable
-      const primaryArtist = artist.split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i)[0].trim();
       const searchQueries = [`${title} ${artist}`];
       if (primaryArtist && primaryArtist.toLowerCase() !== artist.toLowerCase()) {
         searchQueries.push(`${title} ${primaryArtist}`);
@@ -495,40 +639,47 @@ class LyricsService {
         }
       }
 
-      for (const query of searchQueries) {
-        let list = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
-            const searchRes = await fetch(searchUrl, { 
-              headers: { 'User-Agent': 'LyricsFloat-Windows/1.0' },
-              signal: AbortSignal.timeout(7000)
-            });
-            if (searchRes.ok) {
-              list = await searchRes.json();
-              break;
-            }
-          } catch (searchErr) {
-            console.warn(`[LyricsService] search attempt ${attempt + 1} warning: ${searchErr.message}`);
-            if (attempt === 0) {
-              await new Promise(r => setTimeout(r, 600));
-            }
+      // Execute search queries concurrently in parallel
+      const searchPromises = searchQueries.map(async (query) => {
+        if (signal && signal.aborted) return [];
+        try {
+          const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
+          const searchRes = await fetchLrclib(searchUrl, 5000, 1, signal);
+          if (searchRes && searchRes.ok) {
+            return await searchRes.json();
+          } else if (searchRes && searchRes.status >= 400 && searchRes.status !== 404) {
+            this.lastErrorStatus = searchRes.status;
+          }
+        } catch (searchErr) {
+          console.warn(`[LyricsService] search warning: ${searchErr.message}`);
+        }
+        return [];
+      });
+
+      const searchLists = await Promise.all(searchPromises);
+      const allFound = searchLists.flat().filter(Boolean);
+
+      if (allFound.length > 0) {
+        const seenIds = new Set();
+        const uniqueCandidates = [];
+        for (const item of allFound) {
+          if (item && item.id && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            uniqueCandidates.push(item);
+          } else if (item && !item.id) {
+            uniqueCandidates.push(item);
           }
         }
 
-        if (Array.isArray(list) && list.length > 0) {
-          list.sort((a, b) => scoreCandidate(b, title, artist, album, durationSec) - scoreCandidate(a, title, artist, album, durationSec));
+        uniqueCandidates.sort((a, b) => scoreCandidate(b, title, artist, album, durationSec) - scoreCandidate(a, title, artist, album, durationSec));
 
-          const best = list[0];
+        const best = uniqueCandidates[0];
+        if (best) {
           const isBestSameArtist = (best.artistName || '').toLowerCase().trim() === (artist || '').toLowerCase().trim();
           const bestHasCJK = CJK_REGEX.test(best.syncedLyrics || '');
 
-          // Only replace exact get if:
-          // - exact get had no synced lyrics, OR
-          // - exact get had no CJK, but best candidate has native CJK lyrics by the same artist
           if (!exactHasSynced || (!exactHasCJK && bestHasCJK && isBestSameArtist)) {
             data = best;
-            break; // Found strong candidate
           }
         }
       }
@@ -548,6 +699,7 @@ class LyricsService {
             const stitched = this.stitchMedley(part1Data, part2Data, title, artist, album, durationSec);
             if (stitched) {
               this.memoryCache.set(cacheKey, stitched);
+              this.writeToDisk(cacheKey, stitched);
               return stitched;
             }
           }
@@ -592,6 +744,7 @@ class LyricsService {
 
       if (payload) {
         this.memoryCache.set(cacheKey, payload);
+        this.writeToDisk(cacheKey, payload);
         return payload;
       }
     }
@@ -600,4 +753,5 @@ class LyricsService {
   }
 }
 
-module.exports = { LyricsService, normalizePunctuation, SPANISH_MARKERS };
+module.exports = { LyricsService, normalizePunctuation, SPANISH_MARKERS, fetchLrclib, LRCLIB_HEADERS };
+

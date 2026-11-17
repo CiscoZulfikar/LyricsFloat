@@ -270,7 +270,43 @@ body, html {
   height: 100%;
   object-fit: cover;
   border-radius: 3px;
-  transition: opacity 0.25s ease, filter 0.25s ease;
+  transition: opacity 0.35s ease, filter 0.35s ease, transform 0.35s ease;
+}
+
+.track-cover-wrapper.artwork-loading-blur {
+  border-color: rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+}
+
+.track-cover-wrapper.artwork-loading-blur .track-cover-img,
+.track-cover-wrapper.artwork-loading-blur:hover .track-cover-img,
+.track-cover-img.artwork-loading-blur {
+  filter: blur(4.5px) brightness(0.88) !important;
+  opacity: 0.82 !important;
+  transform: scale(0.96);
+  pointer-events: none;
+  transition: filter 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.track-cover-wrapper.artwork-loading-blur .track-cover-fallback {
+  opacity: 0.65;
+  transform: scale(0.96);
+  filter: blur(1px);
+  transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease;
+}
+
+.album-ambient-backdrop.artwork-loading-blur {
+  filter: blur(95px) saturate(90%) brightness(0.7);
+  opacity: 0.08;
+  transition: opacity 0.35s ease, filter 0.35s ease;
+}
+
+.artwork-modal-img.artwork-loading-blur {
+  filter: blur(8px) brightness(0.85) !important;
+  opacity: 0.82 !important;
+  transition: filter 0.35s ease, opacity 0.35s ease;
 }
 
 .track-cover-wrapper.has-cover:hover .track-cover-img {
@@ -684,6 +720,44 @@ body, html {
   border-radius: 50%;
   border: 2px solid var(--accent-primary);
   animation: pulse-ring 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+/* 503 Service Unavailable Message */
+.lyrics-error-503 {
+  gap: 10px;
+}
+
+.idle-error-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ef4444;
+  margin-bottom: 2px;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.lyrics-error-503:hover .idle-error-icon {
+  transform: scale(1.08);
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+.lyrics-error-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: -0.01em;
+}
+
+.lyrics-error-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.01em;
 }
 
 @keyframes pulse-ring {
@@ -1791,11 +1865,29 @@ body, html {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .mini-btn:hover {
   background: rgba(255, 255, 255, 0.18);
   color: var(--text-primary);
+}
+
+.mini-btn.danger-btn {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.mini-btn.danger-btn:hover {
+  background: rgba(239, 68, 68, 0.28);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #ffffff;
+}
+
+.mini-btn.danger-btn:active {
+  transform: scale(0.96);
 }
 
 /* Settings About Section */

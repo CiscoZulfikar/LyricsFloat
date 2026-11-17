@@ -69,6 +69,58 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentTitle = '';
   let currentArtist = '';
   let currentAlbum = '';
+  let loadedAlbum = '';
+  let artworkAwaitingTrackKey = '';
+
+  const loadArtworkImage = createArtworkLoader((url) => {
+    currentCoverUrl = url;
+    if (trackCoverImg) {
+      trackCoverImg.onload = () => {
+        trackCoverImg.style.display = 'block';
+        if (trackCoverFallback) trackCoverFallback.style.display = 'none';
+        if (trackCoverWrapper) {
+          trackCoverWrapper.classList.add('has-cover');
+          trackCoverWrapper.title = 'Click to view artwork';
+        }
+      };
+      trackCoverImg.onerror = () => {
+        trackCoverImg.style.display = 'none';
+        if (trackCoverFallback) trackCoverFallback.style.display = 'flex';
+        if (trackCoverWrapper) {
+          trackCoverWrapper.classList.remove('has-cover');
+          trackCoverWrapper.title = '';
+        }
+      };
+      trackCoverImg.src = url;
+      trackCoverImg.style.display = 'block';
+      if (trackCoverFallback) trackCoverFallback.style.display = 'none';
+      if (trackCoverWrapper) {
+        trackCoverWrapper.classList.add('has-cover');
+        trackCoverWrapper.title = 'Click to view artwork';
+      }
+    }
+    if (albumAmbientBackdrop) {
+      albumAmbientBackdrop.style.backgroundImage = `url("${url}")`;
+    }
+    if (artworkModal && !artworkModal.classList.contains('hidden') && artworkModalImg) {
+      artworkModalImg.src = url;
+      updateArtworkModalInfo();
+    }
+  });
+
+  function setArtworkLoadingBlur(shouldBlur) {
+    if (shouldBlur) {
+      if (trackCoverWrapper) trackCoverWrapper.classList.add('artwork-loading-blur');
+      if (trackCoverImg) trackCoverImg.classList.add('artwork-loading-blur');
+      if (albumAmbientBackdrop) albumAmbientBackdrop.classList.add('artwork-loading-blur');
+      if (artworkModalImg) artworkModalImg.classList.add('artwork-loading-blur');
+    } else {
+      if (trackCoverWrapper) trackCoverWrapper.classList.remove('artwork-loading-blur');
+      if (trackCoverImg) trackCoverImg.classList.remove('artwork-loading-blur');
+      if (albumAmbientBackdrop) albumAmbientBackdrop.classList.remove('artwork-loading-blur');
+      if (artworkModalImg) artworkModalImg.classList.remove('artwork-loading-blur');
+    }
+  }
 
   function updateArtworkModalInfo() {
     const alb = (currentAlbum || '').trim();
@@ -217,52 +269,45 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 2. Cover Art & Visual Ambient Tint
-  function setCoverArt(url) {
-    currentCoverUrl = url || null;
+  function setCoverArt(url, trackKey = normalizeTrackKey(currentTitle, currentArtist)) {
     if (url) {
-      if (trackCoverImg) {
-        trackCoverImg.src = url;
-        trackCoverImg.onload = () => {
-          trackCoverImg.style.display = 'block';
-          if (trackCoverFallback) trackCoverFallback.style.display = 'none';
-          if (trackCoverWrapper) {
-            trackCoverWrapper.classList.add('has-cover');
-            trackCoverWrapper.title = 'Click to view artwork';
-          }
-        };
-        trackCoverImg.onerror = () => {
-          trackCoverImg.style.display = 'none';
-          if (trackCoverFallback) trackCoverFallback.style.display = 'flex';
-          if (trackCoverWrapper) {
-            trackCoverWrapper.classList.remove('has-cover');
-            trackCoverWrapper.title = '';
-          }
-        };
-      }
-      if (albumAmbientBackdrop) {
-        albumAmbientBackdrop.style.backgroundImage = `url("${url}")`;
-      }
-      if (artworkModal && !artworkModal.classList.contains('hidden') && artworkModalImg) {
-        artworkModalImg.src = url;
-        updateArtworkModalInfo();
-      }
-    } else {
+      if (trackKey && currentTrackKey && trackKey !== currentTrackKey) return Promise.resolve(false);
+      return loadArtworkImage(url).then((loaded) => {
+        if (loaded && artworkAwaitingTrackKey && artworkAwaitingTrackKey === trackKey) {
+          requestAnimationFrame(() => {
+            if (artworkAwaitingTrackKey === trackKey) {
+              artworkAwaitingTrackKey = '';
+              setArtworkLoadingBlur(false);
+            }
+          });
+        }
+        return loaded;
+      });
+    }
+
+    loadArtworkImage.cancel();
+    currentCoverUrl = null;
+    if (!url) {
       if (trackCoverImg) trackCoverImg.style.display = 'none';
       if (trackCoverFallback) trackCoverFallback.style.display = 'flex';
       if (trackCoverWrapper) {
         trackCoverWrapper.classList.remove('has-cover');
         trackCoverWrapper.title = '';
       }
-      if (albumAmbientBackdrop) albumAmbientBackdrop.style.backgroundImage = 'none';
+      if (albumAmbientBackdrop) {
+        albumAmbientBackdrop.style.backgroundImage = 'none';
+      }
       if (artworkModal && !artworkModal.classList.contains('hidden')) {
         closeArtworkModal();
       }
     }
+    return Promise.resolve(false);
   }
 
   // Full-Size Artwork Modal Handlers (Dismissed by clicking backdrop, close button, or Escape key)
   if (trackCoverWrapper && artworkModal && artworkModalImg) {
     trackCoverWrapper.addEventListener('click', () => {
+      if (trackCoverWrapper.classList.contains('artwork-loading-blur')) return;
       openArtworkModal();
     });
 
@@ -413,9 +458,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     pendingTrackKey = newTrackKey;
 
+    // Check if new track is from the same album as previous track
+    const prevAlbum = (loadedAlbum || '').toLowerCase().trim();
+    const nextAlbum = ((nextTrackMeta && nextTrackMeta.album) || '').toLowerCase().trim();
+    const isSameAlbum = Boolean(prevAlbum && nextAlbum && prevAlbum === nextAlbum);
+
     if (newTitle) currentTitle = newTitle;
     if (newArtist) currentArtist = newArtist;
     if (nextTrackMeta && nextTrackMeta.album) currentAlbum = nextTrackMeta.album;
+
+    if (!isSameAlbum) {
+      artworkAwaitingTrackKey = newTrackKey;
+      setArtworkLoadingBlur(true);
+    } else {
+      artworkAwaitingTrackKey = '';
+      setArtworkLoadingBlur(false);
+    }
 
     // Check if ContinuousSuites applies
     const nextTrackInfo = {
@@ -552,7 +610,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       // handleTrackSwitch itself checks pendingTrackKey to prevent double-fire
       if (loadedTrackKey !== newTrackKey) {
         handleTrackSwitch(state.title, state.artist, state);
-        if (!state.coverUrl) setCoverArt(null);
       }
     } else {
       // If same track is playing but lyrics were wiped or lost (e.g. after rewind/transition),
@@ -581,7 +638,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (state.title) marquee.updateTitle(state.title);
     if (state.artist) marquee.updateArtist(state.artist);
-    if (state.coverUrl) setCoverArt(state.coverUrl);
+    if (state.coverUrl) setCoverArt(state.coverUrl, newTrackKey);
 
     playbackController.updatePlaybackState(state);
     syncEngine.updatePlaybackState(state);
@@ -594,6 +651,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (idleMsg && idleMsg.contains(e.target)) {
         if (window.lyricsFloatAPI && window.lyricsFloatAPI.retryLyrics) {
           syncEngine.showLoading(currentTitle, currentArtist, 10000);
+          artworkAwaitingTrackKey = currentTrackKey;
+          setArtworkLoadingBlur(true);
           window.lyricsFloatAPI.retryLyrics();
         }
       }
@@ -612,14 +671,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           currentArtist = track.artist;
           marquee.updateArtist(track.artist);
         }
-        if (track?.album) currentAlbum = track.album;
-        if (artworkModal && !artworkModal.classList.contains('hidden')) {
-          updateArtworkModalInfo();
-        }
         const key = normalizeTrackKey(track?.title, track?.artist);
         if (key && key !== currentTrackKey) {
           currentTrackKey = key;
           handleTrackSwitch(track.title, track.artist, track);
+        }
+        if (track?.album) currentAlbum = track.album;
+        if (artworkModal && !artworkModal.classList.contains('hidden')) {
+          updateArtworkModalInfo();
         }
       });
     }
@@ -635,18 +694,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentArtist = enrichedData.artist;
         marquee.updateArtist(enrichedData.artist);
       }
-      if (enrichedData?.album) currentAlbum = enrichedData.album;
+      if (enrichedData?.album) {
+        currentAlbum = enrichedData.album;
+        loadedAlbum = enrichedData.album;
+      }
       if (artworkModal && !artworkModal.classList.contains('hidden')) {
         updateArtworkModalInfo();
       }
       const enrichedKey = normalizeTrackKey(enrichedData?.title, enrichedData?.artist);
       if (enrichedKey) {
+        if (artworkAwaitingTrackKey === currentTrackKey) {
+          artworkAwaitingTrackKey = enrichedKey;
+        }
         loadedTrackKey = enrichedKey;
         currentTrackKey = enrichedKey;
         pendingTrackKey = '';  // Loading complete; clear the guard
       }
       if (enrichedData && enrichedData.coverUrl) {
-        setCoverArt(enrichedData.coverUrl);
+        setCoverArt(enrichedData.coverUrl, enrichedKey);
       }
       if (enrichedData && enrichedData.isExplicit !== undefined) {
         setExplicitBadge(enrichedData.isExplicit);
@@ -715,11 +780,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (initialState.config) {
         settingsController.initFromConfig(initialState.config);
       }
-      if (initialState.lyrics) {
+      if (initialState.lyrics && Array.isArray(initialState.lyrics.lines) && initialState.lyrics.lines.length > 0) {
         lastEnrichedData = initialState.lyrics;
         currentTitle = initialState.lyrics.title || '';
         currentArtist = initialState.lyrics.artist || '';
         currentAlbum = initialState.lyrics.album || '';
+        loadedAlbum = initialState.lyrics.album || '';
         const initialLyricsKey = normalizeTrackKey(initialState.lyrics.title, initialState.lyrics.artist);
         if (initialLyricsKey) {
           loadedTrackKey = initialLyricsKey;
@@ -737,9 +803,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateToolbarCapabilities();
         translationPill.setLoading(Boolean(initialState.lyrics.isTranslating), initialState.lyrics.targetLang);
       } else if (initialState.playbackState && initialState.playbackState.title) {
-        currentTitle = initialState.playbackState.title || '';
-        currentArtist = initialState.playbackState.artist || '';
-        currentAlbum = initialState.playbackState.album || '';
         applyPlaybackState(initialState.playbackState);
       }
       if (initialState.playbackState) {

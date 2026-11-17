@@ -3,13 +3,23 @@
  * Manages preferences modal, tabs, color themes, font size sliders, lyrics alignment, language checklist, window controls, and in-app changelog.
  */
 
-const THEMES = [
-  'theme-neon-violet',
-  'theme-cyberpunk-cyan',
-  'theme-crimson-sunset',
-  'theme-emerald-glass',
-  'theme-nordic-frost'
-];
+(function(root) {
+  let themesList = [
+    'theme-neon-violet',
+    'theme-cyberpunk-cyan',
+    'theme-crimson-sunset',
+    'theme-emerald-glass',
+    'theme-nordic-frost'
+  ];
+  if (typeof require !== 'undefined') {
+    try {
+      themesList = require('../data/themes').THEMES || themesList;
+    } catch (e) {}
+  }
+  if (root && root.THEMES) {
+    themesList = root.THEMES;
+  }
+  const THEMES = themesList;
 
 class SettingsController {
   constructor({
@@ -364,6 +374,45 @@ class SettingsController {
         if (window.lyricsFloatAPI) window.lyricsFloatAPI.closeWindow();
       });
     }
+
+    // Clear Cache Button
+    const btnClearCache = document.getElementById('btn-clear-cache');
+    const clearCacheStatus = document.getElementById('clear-cache-status');
+    if (btnClearCache) {
+      btnClearCache.addEventListener('click', async () => {
+        if (btnClearCache.disabled) return;
+        btnClearCache.disabled = true;
+        const originalText = btnClearCache.textContent;
+        btnClearCache.textContent = 'Clearing...';
+        if (clearCacheStatus) {
+          clearCacheStatus.style.display = 'block';
+          clearCacheStatus.style.color = 'var(--text-muted)';
+          clearCacheStatus.textContent = 'Wiping cache files...';
+        }
+        try {
+          if (window.lyricsFloatAPI && window.lyricsFloatAPI.clearCache) {
+            await window.lyricsFloatAPI.clearCache();
+          }
+          if (clearCacheStatus) {
+            clearCacheStatus.style.color = '#10b981';
+            clearCacheStatus.textContent = '✓ Cache cleared successfully!';
+          }
+          setTimeout(() => {
+            if (clearCacheStatus) {
+              clearCacheStatus.style.display = 'none';
+            }
+          }, 3000);
+        } catch (e) {
+          if (clearCacheStatus) {
+            clearCacheStatus.style.color = '#ef4444';
+            clearCacheStatus.textContent = 'Failed to clear cache: ' + (e.message || e);
+          }
+        } finally {
+          btnClearCache.disabled = false;
+          btnClearCache.textContent = originalText;
+        }
+      });
+    }
   }
 
   bindChangelog() {
@@ -426,6 +475,11 @@ class SettingsController {
   }
 }
 
-if (typeof window !== 'undefined') {
-  window.SettingsController = SettingsController;
-}
+  if (root) {
+    root.SettingsController = SettingsController;
+    root.THEMES = THEMES;
+  }
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { SettingsController, THEMES };
+  }
+})(typeof self !== 'undefined' ? self : this);

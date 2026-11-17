@@ -1,5 +1,15 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 
+if (process.platform === 'win32') {
+  try {
+    require('child_process').execSync('chcp 65001 > nul', { stdio: 'ignore' });
+  } catch (error) {
+    if (process.stdout.isTTY || process.stderr.isTTY) {
+      console.warn('[LyricsFloat] Unable to set terminal code page to UTF-8:', error.message);
+    }
+  }
+}
+
 // Ensure CRLF newlines on Windows to eliminate staircase output in PowerShell and Windows terminals
 if (process.platform === 'win32') {
   const normalizeCRLF = (origWrite) => (chunk, encoding, callback) => {
@@ -144,8 +154,10 @@ function normalizeTrackKey(title, artist) {
 
 let trackChangeCounter = 0;
 let retryTimeout = null;
+let activeLyricsAbortController = null;
 
-function scheduleLyricsRetry(track, originalRequestId) {
+function scheduleLyricsRetry(track, originalRequestId, retryCount = 0) {
+  if (retryCount >= 1) return; // Cap at 1 background retry to prevent rate-limit loops
   if (retryTimeout) clearTimeout(retryTimeout);
   retryTimeout = setTimeout(async () => {
     retryTimeout = null;
@@ -154,18 +166,26 @@ function scheduleLyricsRetry(track, originalRequestId) {
       if (!currentRawLyrics || !lastEnrichedLyrics || lastEnrichedLyrics.lines.length === 0) {
         console.log(`[MediaWatcher] Auto-retrying lyrics fetch for: ${track.title} by ${track.artist}`);
         lyricsService.clearCache(track.title, track.artist);
-        handleTrackChange(track);
+        handleTrackChange(track, retryCount + 1);
       }
     }
-  }, 3500);
+  }, 2000);
 }
 
-async function handleTrackChange(track) {
+async function handleTrackChange(track, retryCount = 0) {
   const requestId = ++trackChangeCounter;
   if (retryTimeout) {
     clearTimeout(retryTimeout);
     retryTimeout = null;
   }
+  if (activeLyricsAbortController) {
+    activeLyricsAbortController.abort();
+    activeLyricsAbortController = null;
+  }
+  const abortController = new AbortController();
+  activeLyricsAbortController = abortController;
+  const signal = abortController.signal;
+
   const feat = extractFeaturedFromTitle(track.title);
   const initialArtist = feat ? combineArtists(track.artist, feat) : track.artist;
   currentTrack = { 
@@ -181,41 +201,88 @@ async function handleTrackChange(track) {
   console.log(`[MediaWatcher] Track changed to: ${track.title} by ${initialArtist} (req #${requestId})`);
 
   try {
-    const [rawLyrics, metadata] = await Promise.all([
-      lyricsService.fetchLyrics({
-        title: track.title,
-        artist: initialArtist,
-        album: track.album,
-        durationSec: track.durationMs ? track.durationMs / 1000 : 0
-      }),
-      coverService.fetchTrackMetadata(track.title, initialArtist, track.album)
-    ]);
+    let metadata = null;
+    const metadataPromise = coverService.fetchTrackMetadata(track.title, initialArtist, track.album);
+    metadataPromise.then((meta) => {
+      metadata = meta;
+      if (signal.aborted || requestId !== trackChangeCounter || !meta) return;
+      if (lastPlaybackState && normalizeTrackKey(lastPlaybackState.title, lastPlaybackState.artist) === trackKey) {
+        if (meta.coverUrl) lastPlaybackState.coverUrl = meta.coverUrl;
+        if (meta.album) lastPlaybackState.album = meta.album;
+        if (meta.artist) lastPlaybackState.artist = meta.artist;
+        if (meta.isExplicit !== undefined) lastPlaybackState.isExplicit = meta.isExplicit;
+      }
+      if (lastEnrichedLyrics && normalizeTrackKey(lastEnrichedLyrics.title, lastEnrichedLyrics.artist) === trackKey) {
+        if (meta.coverUrl) lastEnrichedLyrics.coverUrl = meta.coverUrl;
+        if (meta.album) lastEnrichedLyrics.album = meta.album;
+        if (meta.artist) lastEnrichedLyrics.artist = meta.artist;
+        if (meta.isExplicit !== undefined) lastEnrichedLyrics.isExplicit = meta.isExplicit;
+      }
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('playback-state', {
+          title: track.title,
+          artist: meta.artist || initialArtist,
+          album: meta.album || track.album || '',
+          coverUrl: meta.coverUrl || null,
+          isExplicit: meta.isExplicit,
+          trackNumber: track.trackNumber || 0,
+          durationMs: track.durationMs || 0
+        });
+      }
+    }).catch(() => {});
+
+    const lyricsPromise = lyricsService.fetchLyrics({
+      title: track.title,
+      artist: initialArtist,
+      album: track.album,
+      durationSec: track.durationMs ? track.durationMs / 1000 : 0,
+      signal
+    });
+
+    // Fastest delivery path: resolve lyrics as quickly as possible without blocking on external cover APIs
+    let rawLyrics = await lyricsPromise;
 
     // If another track change occurred while fetching, discard this stale result
-    if (requestId !== trackChangeCounter) {
+    if (signal.aborted || requestId !== trackChangeCounter) {
       console.log(`[MediaWatcher] Discarding stale lyrics fetch for req #${requestId}`);
       return;
     }
 
-    const coverUrl = metadata ? metadata.coverUrl : null;
-    let isExplicit = metadata ? Boolean(metadata.isExplicit) : false;
-    const albumName = track.album || (metadata ? metadata.album : '') || (rawLyrics ? rawLyrics.album : '') || '';
-
-    let fullArtist = initialArtist || '';
-    if (metadata && metadata.artist) {
-      const currentArtistCount = (initialArtist || '').split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i).length;
-      const metaArtistCount = (metadata.artist || '').split(/,|\s+(?:&|feat\.?|ft\.?)\s+/i).length;
-      if (metaArtistCount >= currentArtistCount) {
-        fullArtist = metadata.artist;
+    // If lyrics were not found on initial pass (e.g. track.album was empty on startup / mid-song),
+    // wait for metadata to see if Deezer/iTunes resolved a valid album title to retry!
+    if (!rawLyrics) {
+      if (!metadata) metadata = await metadataPromise;
+      if (signal.aborted || requestId !== trackChangeCounter) {
+        console.log(`[MediaWatcher] Discarding stale lyrics fetch for req #${requestId}`);
+        return;
+      }
+      const albumName = (metadata && metadata.album) ? metadata.album : '';
+      if (albumName && albumName.toLowerCase() !== (track.album || '').toLowerCase()) {
+        console.log(`[MediaWatcher] Re-trying lyrics with resolved album "${albumName}" for: ${track.title}`);
+        rawLyrics = await lyricsService.fetchLyrics({
+          title: track.title,
+          artist: (metadata && metadata.artist) || initialArtist,
+          album: albumName,
+          durationSec: track.durationMs ? track.durationMs / 1000 : 0,
+          signal
+        });
+        if (signal.aborted || requestId !== trackChangeCounter) {
+          console.log(`[MediaWatcher] Discarding stale lyrics fetch for req #${requestId}`);
+          return;
+        }
       }
     }
-    if (feat) {
-      fullArtist = combineArtists(fullArtist, feat);
+
+    // Check synchronous cache for instant cover art if already known
+    if (!metadata && coverService.memoryCache) {
+      const cached = coverService.memoryCache.get(coverService.getCacheKey(track.title, initialArtist, track.album));
+      if (cached) metadata = typeof cached === 'string' ? { coverUrl: cached } : cached;
     }
 
-    if (currentTrack && normalizeTrackKey(currentTrack.title, currentTrack.artist) === trackKey) {
-      currentTrack.artist = fullArtist;
-    }
+    const coverUrl = (metadata && metadata.coverUrl) || null;
+    let isExplicit = (metadata && metadata.isExplicit) || false;
+    const albumName = (metadata && metadata.album) || track.album || '';
+    const fullArtist = (metadata && metadata.artist) || initialArtist;
 
     // Secondary explicitness detection
     if (!isExplicit) {
@@ -243,6 +310,17 @@ async function handleTrackChange(track) {
     }
 
     if (!rawLyrics) {
+      if (retryCount < 1) {
+        // Keep the UI in the smooth "Loading lyrics..." state while doing an immediate retry
+        // after a short backoff for rate limits / transient API delays
+        scheduleLyricsRetry({
+          ...track,
+          album: albumName || track.album,
+          artist: fullArtist || track.artist
+        }, requestId, retryCount);
+        return;
+      }
+
       lastEnrichedLyrics = {
         title: track.title,
         artist: fullArtist,
@@ -251,13 +329,12 @@ async function handleTrackChange(track) {
         isExplicit,
         synced: false,
         lines: [],
-        isForeign: false
+        isForeign: false,
+        errorStatus: lyricsService.lastErrorStatus || null
       };
       if (mainWindow && mainWindow.webContents && requestId === trackChangeCounter) {
         mainWindow.webContents.send('lyrics-loaded', lastEnrichedLyrics);
       }
-      // Auto-retry in background after 3.5s in case of transient network / 503 issue
-      scheduleLyricsRetry(track, requestId);
       return;
     }
 
@@ -330,9 +407,12 @@ app.whenReady().then(async () => {
   await lyricsEnricher.init();
   createWindow();
 
+  let trackChangeDebounceTimer = null;
+
   mediaWatcher.on('track-change', (track) => {
     const feat = extractFeaturedFromTitle(track.title);
     const initialArtist = feat ? combineArtists(track.artist, feat) : track.artist;
+    // Send track-changing immediately for instant visual response (cover blur, title, artist)
     if (mainWindow && mainWindow.webContents) {
       mainWindow.webContents.send('track-changing', {
         title: track.title,
@@ -343,7 +423,13 @@ app.whenReady().then(async () => {
         durationMs: track.durationMs || 0
       });
     }
-    handleTrackChange({ ...track, artist: initialArtist });
+    if (trackChangeDebounceTimer) {
+      clearTimeout(trackChangeDebounceTimer);
+    }
+    trackChangeDebounceTimer = setTimeout(() => {
+      trackChangeDebounceTimer = null;
+      handleTrackChange({ ...track, artist: initialArtist });
+    }, 120);
   });
 
   mediaWatcher.on('playback-state', (state) => {
@@ -503,6 +589,25 @@ ipcMain.handle('retry-lyrics', async () => {
     return true;
   }
   return false;
+});
+
+ipcMain.handle('clear-cache', async () => {
+  try {
+    lyricsService.clearAllCache();
+    if (lyricsEnricher && lyricsEnricher.translationService) {
+      lyricsEnricher.translationService.clearAllCache();
+    }
+    coverService.clearAllCache();
+    if (currentTrack && currentTrack.title) {
+      currentRawLyrics = null;
+      lastEnrichedLyrics = null;
+      handleTrackChange(currentTrack);
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to clear cache:', err);
+    return { success: false, error: err.message };
+  }
 });
 
 

@@ -180,10 +180,10 @@ class LyricsEnricher {
     function isSongPurelyEnglish(lines, songTitle = '', songArtist = '') {
       if (!Array.isArray(lines) || lines.length === 0) return true;
 
-      // Metadata with unambiguous foreign characters or markers indicates a non-pure English track
-      if (isLineForeign(songTitle) || isLineForeign(songArtist)) {
-        return false;
-      }
+      // Metadata names can legitimately contain accented characters (e.g. "The Marías")
+      // without making the actual song lyrics non-English. Only evaluate lyric text itself.
+      void songTitle;
+      void songArtist;
 
       let englishLineCount = 0;
       let foreignLineCount = 0;
@@ -314,7 +314,12 @@ class LyricsEnricher {
 
     // Step 2: Translation (Fast path for cache, async for network)
     if (shouldTranslate) {
-      const cachedTranslations = this.translationService.getCachedTranslation(trackKey, targetLang, rawLyrics.lines.length);
+      const cachedTranslations = this.translationService.getCachedTranslation(
+        trackKey,
+        targetLang,
+        rawLyrics.lines.length,
+        rawLyrics.lines
+      );
       if (cachedTranslations) {
         applyTranslations(cachedTranslations);
         isTranslating = false;

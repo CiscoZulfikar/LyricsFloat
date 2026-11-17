@@ -19,38 +19,61 @@ function norm(str) {
 
 const CJK_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
 
-const LYRIC_EXPRESSION_MAP = {
-  en: {
-    'カミナッチャ': 'Coming at ya',
-    'のらりくらり': 'Nonchalantly',
-    'のらりくらりと': 'Evasively',
-    'ゆらりゆらり': 'Swaying gently',
-    'ゆらりゆらりと': 'Swaying gently',
-    'ゆらゆら': 'Swaying back and forth',
-    'ゆらゆらと': 'Swaying back and forth',
-    'ふらふら': 'Wandering aimlessly',
-    'ふらふらと': 'Wandering aimlessly',
-    'うろうろ': 'Wandering around',
-    'うろうろと': 'Wandering around',
-    'きらきら': 'Sparkling bright',
-    'きらきらと': 'Sparkling bright',
-    'ギラギラ': 'Dazzling glare',
-    'ギラギラと': 'Dazzling glare',
-    '燦々と': 'Brilliantly',
-    'さんさんと': 'Brilliantly'
-  },
-  id: {
-    'のらりくらり': 'Bermalas-malasan',
-    'のらりくらりと': 'Mengelak',
-    'ゆらりゆらり': 'Bergoyang perlahan',
-    'ゆらりゆらりと': 'Bergoyang perlahan',
-    'ゆらゆら': 'Terombang-ambing',
-    'ふらふら': 'Berkeliaran tanpa tujuan',
-    'きらきら': 'Berkilauan',
-    'ギラギラ': 'Menyilaukan',
-    'カミナッチャ': 'Datang padamu'
+function detectNonLatinLanguageHint(text) {
+  if (!text || typeof text !== 'string') return null;
+  // Japanese: Hiragana or Katakana
+  if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return 'ja';
+  // Korean: Hangul
+  if (/[\uAC00-\uD7AF\u1100-\u11FF]/.test(text)) return 'ko';
+  // CJK Ideographs (Hanzi / Kanji)
+  if (/[\u4E00-\u9FAF]/.test(text)) {
+    if (/[\u3000-\u303F]/.test(text)) return 'ja';
+    return 'zh';
   }
-};
+  const cleaned = normalizeHomoglyphs(text);
+  if (/[\u0400-\u04FF]/.test(cleaned)) return 'ru';
+  if (/[\u0370-\u03FF]/.test(cleaned)) return 'el';
+  if (/[\u0600-\u06FF\u0750-\u077F]/.test(text)) return 'ar';
+  if (/[\u0900-\u097F]/.test(text)) return 'hi';
+  return null;
+}
+
+function hasMeaningfulMixedScriptLine(text) {
+  if (!text || typeof text !== 'string') return false;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 3) return false;
+
+  const asciiWords = words.filter(w => /[A-Za-z]/.test(w));
+  const nonAsciiWords = words.filter(w => /[^\u0000-\u007F]/.test(w));
+  if (!asciiWords.length || !nonAsciiWords.length) return false;
+
+  const fillerWords = new Set(['oh', 'yeah', 'hey', 'ah', 'ha', 'mm', 'hmm', 'yo', 'wow']);
+  const meaningfulNonAscii = nonAsciiWords.filter(w => {
+    const clean = w.replace(/[\p{P}\p{S}]/gu, '').toLowerCase();
+    return clean && !fillerWords.has(clean);
+  }).length;
+
+  return meaningfulNonAscii > 0 && meaningfulNonAscii >= Math.max(1, Math.floor(words.length * 0.15));
+}
+
+function getMyMemoryTranslation(data) {
+  if (!data || Number(data.responseStatus) !== 200) return '';
+  return (data.responseData && data.responseData.translatedText || '').trim();
+}
+
+function needsTranslationRetry(item, text, targetLang) {
+  const translation = (item && item.translation || '').trim();
+  if (translation && norm(translation) !== norm(text)) return false;
+
+  const detectedLang = (item && item.detectedLang || '').toLowerCase();
+  const scriptHint = detectNonLatinLanguageHint(text);
+  return Boolean(
+    (detectedLang && !isSameLanguage(detectedLang, targetLang)) ||
+    (scriptHint && !isSameLanguage(scriptHint, targetLang))
+  );
+}
+
+const { LYRIC_EXPRESSION_MAP } = require('../data/lyric-expressions');
 
 function postProcessTranslation(translation, targetLang = 'en') {
   if (!translation || typeof translation !== 'string') return translation;
@@ -94,7 +117,7 @@ class TranslationService {
   }
 
   getCacheKey(trackKey, targetLang = 'en') {
-    const raw = `v2___${(trackKey || '').toLowerCase().trim()}___${targetLang}`;
+    const raw = `v4___${(trackKey || '').toLowerCase().trim()}___${targetLang}`;
     return crypto.createHash('md5').update(raw).digest('hex');
   }
 
@@ -126,6 +149,29 @@ class TranslationService {
       fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
     } catch (e) {
       console.error('Error writing translation cache:', e);
+    }
+  }
+
+  clearCache(trackKey, targetLang = 'en') {
+    const key = this.getCacheKey(trackKey, targetLang);
+    this.memoryCache.delete(key);
+    try {
+      const filePath = path.join(this.cacheDir, `${key}.json`);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) {}
+  }
+
+  clearAllCache() {
+    this.memoryCache.clear();
+    if (this.cacheDir && fs.existsSync(this.cacheDir)) {
+      try {
+        const files = fs.readdirSync(this.cacheDir);
+        for (const file of files) {
+          try {
+            fs.unlinkSync(path.join(this.cacheDir, file));
+          } catch (e) {}
+        }
+      } catch (e) {}
     }
   }
 
@@ -181,8 +227,9 @@ class TranslationService {
       const res = await fetch(url, { signal, headers: { 'User-Agent': 'LyricsFloat/1.0' } });
       if (res.ok) {
         const data = await res.json();
-        if (data && data.responseData && data.responseData.translatedText) {
-          return { text, translation: (data.responseData.translatedText || '').trim(), detectedLang: '' };
+        const translation = getMyMemoryTranslation(data);
+        if (translation) {
+          return { text, translation, detectedLang: '' };
         }
       }
     } catch (e) {
@@ -211,14 +258,21 @@ class TranslationService {
       const openParen = parenWrapper[0];
       const closeParen = parenWrapper[parenWrapper.length - 1];
       const parenContent = parenWrapper.slice(1, -1).trim();
+      const mainHint = detectNonLatinLanguageHint(mainText);
+      const parenHint = detectNonLatinLanguageHint(parenContent);
+      const sourceFor = (hint) => hint || ((sourceLang && sourceLang !== 'auto') ? sourceLang : 'auto');
 
       const [mainRes, parenRes] = await Promise.all([
-        this.fetchSingleText(mainText, targetLang, signal, sourceLang),
-        this.fetchSingleText(parenContent, targetLang, signal, sourceLang)
+        this.fetchSingleText(mainText, targetLang, signal, sourceFor(mainHint)),
+        this.fetchSingleText(parenContent, targetLang, signal, sourceFor(parenHint))
       ]);
 
-      const mainDetected = (mainRes.detectedLang || '').toLowerCase();
-      const parenDetected = (parenRes.detectedLang || '').toLowerCase();
+      const correctDetectedLang = (detectedLang, hint) => {
+        const detected = (detectedLang || '').toLowerCase();
+        return hint && (!detected || isSameLanguage(detected, targetLang)) ? hint : detected;
+      };
+      const mainDetected = correctDetectedLang(mainRes.detectedLang, mainHint);
+      const parenDetected = correctDetectedLang(parenRes.detectedLang, parenHint);
 
       const isMainForeign = Boolean(mainDetected && !isSameLanguage(mainDetected, targetLang));
       const isParenForeign = Boolean(parenDetected && !isSameLanguage(parenDetected, targetLang));
@@ -242,9 +296,20 @@ class TranslationService {
     }
 
     // Normal line
-    const res = await this.fetchSingleText(text, targetLang, signal, sourceLang);
+    const nonLatinHint = detectNonLatinLanguageHint(text);
+    const hasMixedAsciiAndNonAscii = /[A-Za-z]/.test(text) && /[^\u0000-\u007F]/.test(text);
+    const hasUsefulScriptHint = nonLatinHint && (!hasMixedAsciiAndNonAscii || hasMeaningfulMixedScriptLine(text));
+    const effectiveSource = (sourceLang && sourceLang !== 'auto')
+      ? sourceLang
+      : (hasUsefulScriptHint ? nonLatinHint : 'auto');
+    const res = await this.fetchSingleText(text, targetLang, signal, effectiveSource);
     let trans = res.translation;
     let detectedLang = res.detectedLang;
+
+    // Guard against translation API misidentifying non-Latin text (e.g. Traditional Chinese) as English
+    if (nonLatinHint && (!detectedLang || isSameLanguage(detectedLang, targetLang))) {
+      detectedLang = nonLatinHint;
+    }
 
     // Check for swallowed foreign script in mixed lines:
     // If the original text contains CJK characters, but the translation returned by the engine
@@ -341,8 +406,9 @@ class TranslationService {
         const res = await fetch(url, { signal, headers: { 'User-Agent': 'LyricsFloat/1.0' } });
         if (res.ok) {
           const data = await res.json();
-          if (data && data.responseData && data.responseData.translatedText) {
-            translated.push(data.responseData.translatedText);
+          const translation = getMyMemoryTranslation(data);
+          if (translation) {
+            translated.push(translation);
             continue;
           }
         }
@@ -379,12 +445,28 @@ class TranslationService {
     return this.fetchChunkTranslation(texts, targetLang, signal);
   }
 
-  getCachedTranslation(trackKey, targetLang = 'en', expectedLength = null) {
+  async retryIncompleteTranslation(text, item, targetLang, signal = null) {
+    let result = item;
+    for (let attempt = 0; attempt < 2 && needsTranslationRetry(result, text, targetLang); attempt++) {
+      if (signal && signal.aborted) break;
+      await this.sleep(250 * (attempt + 1));
+      result = await this.translateSingleLine(text, targetLang, signal);
+    }
+    return result;
+  }
+
+  getCachedTranslation(trackKey, targetLang = 'en', expectedLength = null, lines = null) {
     if (!trackKey) return null;
     const cacheKey = this.getCacheKey(trackKey, targetLang);
     if (this.memoryCache.has(cacheKey)) {
       const data = this.memoryCache.get(cacheKey);
       if (!expectedLength || (Array.isArray(data) && data.length === expectedLength)) {
+        if (data.some((item, idx) => {
+          const text = lines && lines[idx] ? (lines[idx].text || lines[idx].original || '') : (item && item.original) || '';
+          return needsTranslationRetry(item, text, targetLang);
+        })) {
+          return null;
+        }
         return data;
       }
     }
@@ -400,6 +482,12 @@ class TranslationService {
           }
         }
       });
+      if (diskData.some((item, idx) => {
+        const text = lines && lines[idx] ? (lines[idx].text || lines[idx].original || '') : (item && item.original) || '';
+        return needsTranslationRetry(item, text, targetLang);
+      })) {
+        return null;
+      }
       if (changed) {
         this.writeToDisk(cacheKey, diskData);
       }
@@ -415,7 +503,23 @@ class TranslationService {
     const cacheKey = this.getCacheKey(trackKey, targetLang);
 
     if (this.memoryCache.has(cacheKey)) {
-      return this.memoryCache.get(cacheKey);
+      const cached = this.memoryCache.get(cacheKey);
+      if (!Array.isArray(cached) || cached.length !== lines.length) {
+        return cached;
+      }
+      const retryResults = await Promise.all(cached.map((item, idx) => {
+        const text = normalizeHomoglyphs((lines[idx].text || lines[idx].original || '').trim());
+        return needsTranslationRetry(item, text, targetLang)
+          ? this.retryIncompleteTranslation(text, item, targetLang)
+          : null;
+      }));
+      retryResults.forEach((updated, idx) => {
+        if (updated && updated.translation && norm(updated.translation) !== norm(lines[idx].text || lines[idx].original || '')) {
+          cached[idx] = { ...cached[idx], ...updated, timeMs: lines[idx].timeMs };
+        }
+      });
+      this.writeToDisk(cacheKey, cached);
+      return cached;
     }
 
     const diskData = this.readFromDisk(cacheKey);
@@ -430,6 +534,15 @@ class TranslationService {
             changed = true;
           }
         }
+        if (item && (!item.detectedLang || isSameLanguage(item.detectedLang, targetLang))) {
+          const origText = (lines[idx] && (lines[idx].text || lines[idx].original || '')).trim();
+          const hint = detectNonLatinLanguageHint(origText);
+          if (hint) {
+            item.detectedLang = hint;
+            item.isPartiallyForeign = true;
+            changed = true;
+          }
+        }
         if (dict) {
           const origText = (lines[idx] && (lines[idx].text || lines[idx].original || '')).trim();
           const cleanKey = origText.replace(/[\p{P}\s]/gu, '');
@@ -437,6 +550,18 @@ class TranslationService {
             item.translation = dict[cleanKey];
             changed = true;
           }
+        }
+      });
+      const retryResults = await Promise.all(diskData.map((item, idx) => {
+        const text = normalizeHomoglyphs((lines[idx].text || lines[idx].original || '').trim());
+        return needsTranslationRetry(item, text, targetLang)
+          ? this.retryIncompleteTranslation(text, item, targetLang)
+          : null;
+      }));
+      retryResults.forEach((updated, idx) => {
+        if (updated && updated.translation && norm(updated.translation) !== norm(lines[idx].text || lines[idx].original || '')) {
+          diskData[idx] = { ...diskData[idx], ...updated, timeMs: lines[idx].timeMs };
+          changed = true;
         }
       });
       if (changed) {
@@ -471,6 +596,14 @@ class TranslationService {
           textMap.set(text, batchResults[idx]);
         });
       }
+
+      const incompleteTranslations = Array.from(textMap.entries()).filter(([text, item]) =>
+        needsTranslationRetry(item, text, targetLang)
+      );
+      await Promise.all(incompleteTranslations.map(async ([text, item]) => {
+        const retried = await this.retryIncompleteTranslation(text, item, targetLang, signal);
+        textMap.set(text, retried);
+      }));
 
       // Find primary foreign detected language from valid standard languages
       const standardLangs = ['ja', 'ko', 'zh', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'id', 'el', 'hi', 'ar'];
